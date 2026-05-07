@@ -29,6 +29,7 @@ Inspired by the original [AudioPlaybackConnector](https://github.com/ysc3839/Aud
 - Theme-aware tray icons for light and dark taskbars
 - JSON-based settings persistence
 - Multi-language support
+- Optional startup with Windows (disabled by default)
 
 ---
 
@@ -154,6 +155,15 @@ The MSIX package is generated in the packaging project output folder under:
 ```txt
 AppPackages/
 ```
+
+### Continuous Integration
+
+Every push and pull request is checked by GitHub Actions for:
+
+- **clang-format** compliance (`--dry-run --Werror`)
+- **CppCheck** static analysis (`--enable=all`)
+- Clean **Release/x64** build with `/W4 /WX`
+- **CodeQL** security analysis
 
 ---
 

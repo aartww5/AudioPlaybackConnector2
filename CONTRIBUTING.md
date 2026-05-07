@@ -1,0 +1,58 @@
+# Contributing
+
+Thank you for your interest in contributing to AudioPlaybackConnector2.
+
+## Prerequisites
+
+- Visual Studio 2022 (17.14 or later) with the following workloads:
+  - **Desktop development with C++**
+  - **Windows application development** (for WinUI 3 / Windows App SDK)
+- Windows SDK 10.0.26100.0 or later
+- Windows 11 (or Windows 10 1803+ for testing)
+
+## Building
+
+1. Clone the repository
+2. Open `AudioPlaybackConnector2.slnx` in Visual Studio 2022
+3. NuGet packages restore automatically on first build
+4. Build → Build Solution (x64, Debug)
+
+See [README.md](README.md) for full build instructions and architecture details.
+
+## How to Contribute
+
+### Reporting Bugs
+
+Use the [bug report template](.github/ISSUE_TEMPLATE/bug_report.md). Include:
+- Windows version and build number
+- Steps to reproduce
+- Expected vs. actual behavior
+- Relevant logs (Event Viewer → Application, or debug output)
+
+### Suggesting Features
+
+Use the [feature request template](.github/ISSUE_TEMPLATE/feature_request.md).
+
+### Submitting Pull Requests
+
+1. Fork the repository and create a branch from `main`
+2. Make your changes
+3. Verify the build succeeds: `msbuild AudioPlaybackConnector2.slnx /p:Configuration=Release /p:Platform=x64`
+4. Open a pull request against `main`
+
+## Code Style
+
+- **C++ standard:** C++23 (`/std:c++latest`)
+- **Warnings:** `/W4 /WX` — all warnings are errors; do not introduce new warnings
+- **Includes:** All Windows, WinRT, WIL, and GDI+ headers belong in `pch.h`, not in individual `.cpp` files
+- **Strings:** All user-visible strings must go through `_(key)` and be added to all 8 locale files in `res/strings/`
+- **Thread safety:** Anything that reads or writes `DeviceManager` state must hold the appropriate `wil::srwlock`
+- **Comments:** Only where the *why* is non-obvious — well-named identifiers do the rest
+
+## Known Issues
+
+Please check the existing [GitHub Issues](https://github.com/N0ahTM/AudioPlaybackConnector2/issues) before opening a new bug report to avoid duplicates.
+
+## License
+
+By contributing, you agree that your contributions will be licensed under the [MIT License](LICENSE).
