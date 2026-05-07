@@ -177,6 +177,4 @@ Inspired by the original project:
 
 ## License
 
-Copyright (C) 2025 Noah Meyer.
-
 MIT License. See [LICENSE](LICENSE) for details.

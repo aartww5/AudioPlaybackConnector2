@@ -8,12 +8,12 @@
   IgnorableNamespaces="uap rescap desktop">
 
   <Identity
-    Name="AudioPlaybackConnector2"
-    Publisher="CN=test"
+    Name="12144NoahMeyer.AudioPlaybackConnector2"
+    Publisher="CN=3784F101-6355-463B-A35E-41BD0A95071B"
     Version="1.0.0.0" />
 
   <Properties>
-    <DisplayName>Audio Playback Connector</DisplayName>
+    <DisplayName>AudioPlaybackConnector2</DisplayName>
     <PublisherDisplayName>Noah Meyer</PublisherDisplayName>
     <Logo>Images\StoreLogo.png</Logo>
   </Properties>
@@ -31,7 +31,7 @@
       Executable="$targetnametoken$.exe"
       EntryPoint="$targetentrypoint$">
       <uap:VisualElements
-        DisplayName="Audio Playback Connector"
+        DisplayName="AudioPlaybackConnector2"
         Description="Connect Bluetooth audio devices as A2DP sinks on Windows"
         BackgroundColor="transparent"
         Square150x150Logo="Images\Square150x150Logo.png"
