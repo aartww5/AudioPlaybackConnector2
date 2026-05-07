@@ -38,7 +38,7 @@ jobs:
         /p:Platform=x64
         /p:AppxPackageSigningEnabled=false
         /t:Rebuild
-        /m
+        /m:1
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3
