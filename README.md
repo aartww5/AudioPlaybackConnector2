@@ -3,11 +3,12 @@
 [![Build](https://github.com/N0ahTM/AudioPlaybackConnector2/actions/workflows/build.yml/badge.svg)](https://github.com/N0ahTM/AudioPlaybackConnector2/actions/workflows/build.yml)
 [![CodeQL](https://github.com/N0ahTM/AudioPlaybackConnector2/actions/workflows/codeql.yml/badge.svg)](https://github.com/N0ahTM/AudioPlaybackConnector2/actions/workflows/codeql.yml)
 [![GitHub release (latest by date)](https://img.shields.io/github/v/release/N0ahTM/AudioPlaybackConnector2)](https://github.com/N0ahTM/AudioPlaybackConnector2/releases/latest)
-[![GitHub issues](https://img.shields.io/github/issues/N0ahTM/AudioPlaybackConnector2)](https://github.com/N0ahTM/AudioPlaybackConnector2/issues)
 [![License](https://img.shields.io/github/license/N0ahTM/AudioPlaybackConnector2)](LICENSE)
 [![C++](https://img.shields.io/badge/C%2B%2B-23-00599C?logo=c%2B%2B)](https://en.cppreference.com/)
 
 AudioPlaybackConnector2 is a Windows system-tray application for connecting Bluetooth audio devices as A2DP audio sinks using the Win32 `AudioPlaybackConnection` API.
+
+<img width="600" alt="AudioPlaybackConnector2 device picker" src="https://github.com/user-attachments/assets/8eba7e86-4e53-46c8-b495-44aef7599460" />
 
 The app is built with **WinUI 3 Desktop**, **C++/WinRT**, and packaged as an **MSIX**.
 
