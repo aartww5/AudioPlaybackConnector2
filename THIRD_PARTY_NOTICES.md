@@ -75,6 +75,18 @@ licensed under the same MIT license as the main Windows App SDK package:
 
 ---
 
+## Microsoft Fluent UI System Icons
+
+**Usage:** Derived toast status icon assets under `AudioPlaybackConnector2 (Package)/Images/Toast*.scale-*.png`  
+**License:** MIT  
+**Source:** https://github.com/microsoft/fluentui-system-icons  
+
+> Copyright (c) Microsoft Corporation.
+>
+> (Same MIT license text as above)
+
+---
+
 ## Microsoft Edge WebView2
 
 **Version:** 1.0.3719.77  

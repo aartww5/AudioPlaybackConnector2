@@ -47,7 +47,7 @@
     <AppxPackageSigningTimestampDigestAlgorithm>SHA256</AppxPackageSigningTimestampDigestAlgorithm>
     <AppxAutoIncrementPackageRevision>False</AppxAutoIncrementPackageRevision>
     <GenerateTestArtifacts>True</GenerateTestArtifacts>
-    <AppxBundlePlatforms>x86|x64</AppxBundlePlatforms>
+    <AppxBundlePlatforms>x86|x64|arm64</AppxBundlePlatforms>
     <AppInstallerUri>https://github.com/N0ahTM/AudioPlaybackConnector2/releases</AppInstallerUri>
     <HoursBetweenUpdateChecks>168</HoursBetweenUpdateChecks>
     <PackageCertificateThumbprint>6DB1DB06485BC3CF74FA5A44CB00844217D2A653</PackageCertificateThumbprint>
@@ -79,6 +79,11 @@
   <ItemGroup>
     <None Include="Package.StoreAssociation.xml" />
     <None Include="AudioPlaybackConnector2 %28Package%29_TemporaryKey.pfx" />
+    <None Include="Images\ToastSource\ToastConnected.svg" />
+    <None Include="Images\ToastSource\ToastError.svg" />
+    <None Include="Images\ToastSource\ToastInfo.svg" />
+    <None Include="Images\ToastSource\ToastReconnect.svg" />
+    <None Include="Images\ToastSource\ToastWarning.svg" />
     <Content Include="Images\LargeTile.scale-100.png" />
     <Content Include="Images\LargeTile.scale-200.png" />
     <Content Include="Images\LargeTile.scale-400.png" />
@@ -110,6 +115,31 @@
     <Content Include="Images\StoreLogo.scale-100.png" />
     <Content Include="Images\StoreLogo.scale-200.png" />
     <Content Include="Images\StoreLogo.scale-400.png" />
+    <Content Include="Images\ToastConnected.scale-100.png" />
+    <Content Include="Images\ToastConnected.scale-125.png" />
+    <Content Include="Images\ToastConnected.scale-150.png" />
+    <Content Include="Images\ToastConnected.scale-200.png" />
+    <Content Include="Images\ToastConnected.scale-400.png" />
+    <Content Include="Images\ToastError.scale-100.png" />
+    <Content Include="Images\ToastError.scale-125.png" />
+    <Content Include="Images\ToastError.scale-150.png" />
+    <Content Include="Images\ToastError.scale-200.png" />
+    <Content Include="Images\ToastError.scale-400.png" />
+    <Content Include="Images\ToastInfo.scale-100.png" />
+    <Content Include="Images\ToastInfo.scale-125.png" />
+    <Content Include="Images\ToastInfo.scale-150.png" />
+    <Content Include="Images\ToastInfo.scale-200.png" />
+    <Content Include="Images\ToastInfo.scale-400.png" />
+    <Content Include="Images\ToastReconnect.scale-100.png" />
+    <Content Include="Images\ToastReconnect.scale-125.png" />
+    <Content Include="Images\ToastReconnect.scale-150.png" />
+    <Content Include="Images\ToastReconnect.scale-200.png" />
+    <Content Include="Images\ToastReconnect.scale-400.png" />
+    <Content Include="Images\ToastWarning.scale-100.png" />
+    <Content Include="Images\ToastWarning.scale-125.png" />
+    <Content Include="Images\ToastWarning.scale-150.png" />
+    <Content Include="Images\ToastWarning.scale-200.png" />
+    <Content Include="Images\ToastWarning.scale-400.png" />
     <Content Include="Images\Wide310x150Logo.scale-100.png" />
     <Content Include="Images\Wide310x150Logo.scale-200.png" />
     <Content Include="Images\Wide310x150Logo.scale-400.png" />

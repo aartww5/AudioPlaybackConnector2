@@ -122,8 +122,14 @@ winrt::Windows::Foundation::IAsyncAction DeviceManager::ConnectAsync(winrt::hstr
 winrt::fire_and_forget DeviceManager::ReconnectAsync(winrt::hstring deviceId) {
     auto lifetime = shared_from_this();
     try {
+        if (deviceId.empty()) co_return;
+
         {
             auto guard = m_lock.lock_exclusive();
+            if (m_reconnectingIds.count(deviceId) > 0) {
+                DebugTrace(L"[DeviceManager] ReconnectAsync ignored; reconnect already running for {0}", std::wstring(deviceId));
+                co_return;
+            }
             m_reconnectingIds.insert(deviceId);
             m_cancelledReconnectIds.erase(deviceId);
             m_reconnectAttempts.erase(deviceId);

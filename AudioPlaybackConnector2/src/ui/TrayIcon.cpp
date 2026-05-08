@@ -270,8 +270,13 @@ wil::unique_hicon TrayIcon::CreateIconFromImage(Gdiplus::Bitmap& source, int siz
         float g = color.GetG() / 255.0f;
         float b = color.GetB() / 255.0f;
 
-        Gdiplus::ColorMatrix matrix = {
-            r, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, g, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, b, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
+        Gdiplus::ColorMatrix matrix = {{
+            {r, 0.0f, 0.0f, 0.0f, 0.0f},
+            {0.0f, g, 0.0f, 0.0f, 0.0f},
+            {0.0f, 0.0f, b, 0.0f, 0.0f},
+            {0.0f, 0.0f, 0.0f, 1.0f, 0.0f},
+            {0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+        }};
 
         Gdiplus::ImageAttributes attrs;
         attrs.SetColorMatrix(&matrix, Gdiplus::ColorMatrixFlagsDefault, Gdiplus::ColorAdjustTypeBitmap);

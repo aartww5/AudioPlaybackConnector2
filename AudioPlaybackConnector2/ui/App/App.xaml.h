@@ -1,5 +1,6 @@
 #pragma once
 
+#include <winrt/Microsoft.Windows.AppNotifications.h>
 #include <ui/App/App.xaml.g.h>
 
 class TrayIcon;
@@ -51,10 +52,20 @@ private:
     void InitializeTray();
     void InitializeDeviceManager();
     void InitializeContextMenu();
+    void InitializeNotifications();
+    void TeardownNotifications();
     void LaunchBluetoothSettings();
     void SetupDeviceEvents();
     void TeardownDeviceEvents();
     void TryAutoReconnect();
+    winrt::hstring ResolveKnownDeviceName(winrt::hstring const& id) const;
+    void OnNotificationInvoked(winrt::Microsoft::Windows::AppNotifications::AppNotificationActivatedEventArgs const& args);
+    bool TryShowToast(std::wstring const& xml, winrt::hstring const& tag, winrt::Windows::Foundation::DateTime const& expiration);
+    void ShowAppStartedNotification();
+    void ShowDeviceConnectedNotification(winrt::hstring const& id, winrt::hstring const& deviceName);
+    void ShowDeviceDisconnectedNotification(winrt::hstring const& id, winrt::hstring const& deviceName);
+    void ShowAutoReconnectNotification(winrt::hstring const& id, winrt::hstring const& deviceName);
+    void ShowAutoReconnectFailedNotification(winrt::hstring const& id, winrt::hstring const& deviceName);
 
     /*------------------------------------------------------------------------------------------------------------------*/
     /*//////// Tray Handlers //////////////////////////////////////////////////////////////////////////////////////////*/
@@ -103,6 +114,8 @@ private:
     std::size_t m_autoReconnectFailedToken = 0;
     std::size_t m_deviceStatusChangedToken = 0;
     std::size_t m_themeChangedToken = 0;
+    winrt::event_token m_notificationInvokedToken{};
+    winrt::Microsoft::Windows::AppNotifications::AppNotificationManager m_notificationManager{nullptr};
     winrt::AudioPlaybackConnector2::DevicePickerView m_devicePickerView{nullptr};
 
     UINT m_trayCallbackMsg = WM_APP + 1;
@@ -110,6 +123,7 @@ private:
     static constexpr UINT_PTR c_timerAnimation = 0x41504332;
     ULONG_PTR m_gdiplusToken = 0;
     bool m_devicePickerPreloaded = false;
+    bool m_notificationsRegistered = false;
     std::atomic<bool> m_exiting = false;
 };
 } // namespace winrt::AudioPlaybackConnector2::implementation

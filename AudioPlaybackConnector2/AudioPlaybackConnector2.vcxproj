@@ -83,6 +83,10 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <ClangTidyChecks>-*,misc-unused-using-decls</ClangTidyChecks>
+    <ClangTidyToolExeAdditionalOptions>--extra-arg=-Wno-unused-command-line-argument --extra-arg=-Wno-nontrivial-memcall</ClangTidyToolExeAdditionalOptions>
+  </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>
       <PrecompiledHeader>Use</PrecompiledHeader>

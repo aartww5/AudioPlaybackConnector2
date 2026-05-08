@@ -5,12 +5,13 @@
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
   xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
   xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
-  IgnorableNamespaces="uap rescap desktop">
+  xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
+  IgnorableNamespaces="uap rescap desktop com">
 
   <Identity
     Name="12144NoahMeyer.AudioPlaybackConnector2"
     Publisher="CN=test"
-    Version="1.0.0.0" />
+    Version="0.2.0.0" />
 
   <Properties>
     <DisplayName>AudioPlaybackConnector2</DisplayName>
@@ -46,6 +47,16 @@
         <desktop:Extension Category="windows.startupTask" Executable="AudioPlaybackConnector2.exe" EntryPoint="Windows.FullTrustApplication">
           <desktop:StartupTask TaskId="AudioPlaybackConnector2StartupTask" Enabled="false" DisplayName="Audio Playback Connector" />
         </desktop:Extension>
+        <desktop:Extension Category="windows.toastNotificationActivation">
+          <desktop:ToastNotificationActivation ToastActivatorCLSID="8d5b3b0d-1d44-4e94-a58c-2d345b8ff9e8" />
+        </desktop:Extension>
+        <com:Extension Category="windows.comServer">
+          <com:ComServer>
+            <com:ExeServer Executable="AudioPlaybackConnector2.exe" Arguments="----AppNotificationActivated:" DisplayName="AudioPlaybackConnector2">
+              <com:Class Id="8d5b3b0d-1d44-4e94-a58c-2d345b8ff9e8" />
+            </com:ExeServer>
+          </com:ComServer>
+        </com:Extension>
       </Extensions>
     </Application>
   </Applications>
