@@ -3,6 +3,20 @@
 #include <core/StringResources.hpp>
 #include <utility>
 
+namespace {
+constexpr std::size_t c_maxReconnectAttempts = 10;
+constexpr int c_initialReconnectDelaySeconds = 5;
+constexpr int c_maxReconnectDelaySeconds = 60;
+
+std::chrono::seconds GetReconnectDelay(std::size_t attempt) {
+    auto delay = c_initialReconnectDelaySeconds;
+    for (std::size_t i = 1; i < attempt && delay < c_maxReconnectDelaySeconds; ++i) {
+        delay = std::min(delay * 2, c_maxReconnectDelaySeconds);
+    }
+    return std::chrono::seconds(delay);
+}
+} // namespace
+
 /*------------------------------------------------------------------------------------------------------------------*/
 /*//////// Public Interface /////////////////////////////////////////////////////////////////////////////////////*/
 /*------------------------------------------------------------------------------------------------------------------*/
@@ -43,6 +57,7 @@ void DeviceManager::StopDeviceWatcher() {
 void DeviceManager::CancelPendingReconnects() {
     auto guard = m_lock.lock_exclusive();
     m_allReconnectsCancelled = true;
+    m_reconnectAttempts.clear();
 }
 
 void DeviceManager::SetAutoReconnectPredicate(AutoReconnectPredicate pred) {
@@ -110,6 +125,8 @@ winrt::fire_and_forget DeviceManager::ReconnectAsync(winrt::hstring deviceId) {
         {
             auto guard = m_lock.lock_exclusive();
             m_reconnectingIds.insert(deviceId);
+            m_cancelledReconnectIds.erase(deviceId);
+            m_reconnectAttempts.erase(deviceId);
         }
 
         DeviceStatusChanged(deviceId, winrt::hstring(_("Reconnecting")), winrt::Windows::Devices::Enumeration::DevicePickerDisplayStatusOptions::ShowProgress | winrt::Windows::Devices::Enumeration::DevicePickerDisplayStatusOptions::ShowDisconnectButton);
@@ -181,6 +198,8 @@ void DeviceManager::SetAutoReconnect(winrt::hstring deviceId, bool enabled) {
     auto iter = m_connections.find(deviceId);
     if (iter != m_connections.end())
         iter->second.AutoReconnect = enabled;
+    if (!enabled)
+        m_reconnectAttempts.erase(deviceId);
 }
 
 std::vector<DeviceConnectionInfo> DeviceManager::GetConnectedDevices() const {
@@ -220,6 +239,7 @@ void DeviceManager::Disconnect(winrt::hstring deviceId, DisconnectReason reason)
         m_disconnectingIds.insert(deviceId);
         if (reason == DisconnectReason::UserInitiated) {
             m_cancelledReconnectIds.insert(deviceId);
+            m_reconnectAttempts.erase(deviceId);
         }
     }
 
@@ -375,6 +395,7 @@ winrt::Windows::Foundation::IAsyncAction DeviceManager::ConnectInternalAsync(win
                     auto iter = m_connections.find(deviceId);
                     if (iter == m_connections.end() || m_connectAttemptIds[deviceId] != attemptId) co_return;
                     iter->second.IsOpen = true;
+                    m_reconnectAttempts.erase(deviceId);
                 }
                 DeviceConnected(deviceId);
                 DeviceStatusChanged(deviceId, winrt::hstring(_("Connected")), winrt::Windows::Devices::Enumeration::DevicePickerDisplayStatusOptions::ShowDisconnectButton);
@@ -435,6 +456,28 @@ void DeviceManager::OnConnectionStateChanged(winrt::Windows::Media::Audio::Audio
 
 void DeviceManager::ScheduleReconnect(winrt::hstring deviceId) {
     try {
+        std::size_t attempt = 0;
+        bool notifyFailed = false;
+        {
+            auto guard = m_lock.lock_exclusive();
+            auto& attempts = m_reconnectAttempts[deviceId];
+            if (attempts >= c_maxReconnectAttempts) {
+                notifyFailed = attempts == c_maxReconnectAttempts;
+                attempts = c_maxReconnectAttempts + 1;
+                m_cancelledReconnectIds.insert(deviceId);
+            } else {
+                attempt = ++attempts;
+            }
+        }
+
+        if (notifyFailed) {
+            DebugTrace(L"[DeviceManager] Auto-reconnect stopped after {0} attempts for {1}", c_maxReconnectAttempts, std::wstring(deviceId));
+            ConnectionError(deviceId, winrt::hstring(_("AutoReconnectFailed")));
+            DeviceStatusChanged(deviceId, winrt::hstring(_("AutoReconnectFailed")), winrt::Windows::Devices::Enumeration::DevicePickerDisplayStatusOptions::ShowRetryButton);
+            AutoReconnectFailed(deviceId);
+            return;
+        }
+
         AutoReconnectTriggered(deviceId);
         // Erase the stale-cancel marker set by Disconnect() so this new timer
         // is allowed to fire. Any timer created before this Disconnect() call
@@ -471,7 +514,7 @@ void DeviceManager::ScheduleReconnect(winrt::hstring deviceId) {
                     }
                 }
             },
-            std::chrono::seconds(5));
+            GetReconnectDelay(attempt));
     } catch (...) {
         auto guard = m_lock.lock_exclusive();
         auto iter = m_reconnectTimerCounts.find(deviceId);

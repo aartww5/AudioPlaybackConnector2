@@ -283,6 +283,13 @@ void winrt::AudioPlaybackConnector2::implementation::App::SetupDeviceEvents() {
             });
         }
     };
+    m_autoReconnectFailedToken = m_deviceManager->AutoReconnectFailed += [weak](auto id) {
+        if (auto self = weak.get()) {
+            self->RunOnUIThread([weak, id]() {
+                if (auto self = weak.get()) self->OnAutoReconnectFailed(id);
+            });
+        }
+    };
     m_deviceStatusChangedToken = m_deviceManager->DeviceStatusChanged += [weak](auto id, auto status, auto) {
         if (auto self = weak.get()) {
             self->RunOnUIThread([weak, id, status]() {
@@ -335,6 +342,10 @@ void winrt::AudioPlaybackConnector2::implementation::App::TeardownDeviceEvents()
     if (m_autoReconnectTriggeredToken) {
         m_deviceManager->AutoReconnectTriggered -= m_autoReconnectTriggeredToken;
         m_autoReconnectTriggeredToken = 0;
+    }
+    if (m_autoReconnectFailedToken) {
+        m_deviceManager->AutoReconnectFailed -= m_autoReconnectFailedToken;
+        m_autoReconnectFailedToken = 0;
     }
     if (m_deviceStatusChangedToken) {
         m_deviceManager->DeviceStatusChanged -= m_deviceStatusChangedToken;
@@ -834,6 +845,24 @@ void winrt::AudioPlaybackConnector2::implementation::App::OnAutoReconnectTrigger
     if (m_trayIcon) {
         auto msg = ReplaceFirstPlaceholder(std::wstring(_("Notification_AutoReconnect")), deviceName);
         m_trayIcon->ShowNotification(_("AppName"), msg, TrayNotificationType::Info);
+    }
+}
+
+void winrt::AudioPlaybackConnector2::implementation::App::OnAutoReconnectFailed(winrt::hstring const& id) {
+    if (m_exiting.load() || !m_settings) return;
+    DebugTrace(L"[App] OnAutoReconnectFailed: {0}", std::wstring(id));
+
+    winrt::hstring deviceName = id;
+    {
+        auto locked = m_settings->LockSharedData();
+        auto it = std::find_if(locked->Devices.begin(), locked->Devices.end(), [&](const auto& d) { return d.Id == id; });
+        if (it != locked->Devices.end())
+            deviceName = winrt::hstring(it->Name);
+    }
+
+    if (m_trayIcon) {
+        auto msg = ReplaceFirstPlaceholder(std::wstring(_("Notification_AutoReconnectFailed")), deviceName);
+        m_trayIcon->ShowNotification(_("AppName"), msg, TrayNotificationType::Error);
     }
 }
 

@@ -72,6 +72,7 @@ private:
     void OnDeviceDisconnected(winrt::hstring const& id);
     void OnConnectionError(winrt::hstring const& id, winrt::hstring msg);
     void OnAutoReconnectTriggered(winrt::hstring const& id);
+    void OnAutoReconnectFailed(winrt::hstring const& id);
 
     /*------------------------------------------------------------------------------------------------------------------*/
     /*//////// Window Subclass ////////////////////////////////////////////////////////////////////////////////////////*/
@@ -99,6 +100,7 @@ private:
     std::size_t m_deviceDisconnectedToken = 0;
     std::size_t m_connectionErrorToken = 0;
     std::size_t m_autoReconnectTriggeredToken = 0;
+    std::size_t m_autoReconnectFailedToken = 0;
     std::size_t m_deviceStatusChangedToken = 0;
     std::size_t m_themeChangedToken = 0;
     winrt::AudioPlaybackConnector2::DevicePickerView m_devicePickerView{nullptr};
