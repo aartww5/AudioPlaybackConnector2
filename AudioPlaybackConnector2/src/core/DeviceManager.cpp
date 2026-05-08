@@ -551,9 +551,22 @@ void DeviceManager::OnDeviceAdded(winrt::Windows::Devices::Enumeration::DeviceWa
 }
 
 void DeviceManager::OnDeviceRemoved(winrt::Windows::Devices::Enumeration::DeviceWatcher, winrt::Windows::Devices::Enumeration::DeviceInformationUpdate args) {
-    auto guard = m_lock.lock_exclusive();
-    if (m_watcherStopping) return;
-    m_deviceCache.erase(
-        std::remove_if(m_deviceCache.begin(), m_deviceCache.end(), [&](auto const& cached) { return cached.Id() == args.Id(); }),
-        m_deviceCache.end());
+    bool connectedDeviceRemoved = false;
+    {
+        auto guard = m_lock.lock_exclusive();
+        if (m_watcherStopping) return;
+
+        m_deviceCache.erase(
+            std::remove_if(m_deviceCache.begin(), m_deviceCache.end(), [&](auto const& cached) { return cached.Id() == args.Id(); }),
+            m_deviceCache.end());
+
+        connectedDeviceRemoved =
+            m_connections.count(args.Id()) > 0 &&
+            m_disconnectingIds.count(args.Id()) == 0 &&
+            m_reconnectingIds.count(args.Id()) == 0;
+    }
+
+    if (connectedDeviceRemoved) {
+        Disconnect(args.Id(), DisconnectReason::Unexpected);
+    }
 }
