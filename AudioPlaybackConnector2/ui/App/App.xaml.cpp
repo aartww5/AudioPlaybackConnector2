@@ -307,13 +307,12 @@ void winrt::AudioPlaybackConnector2::implementation::App::InitializeTray() {
     DebugTrace(L"[App] InitializeTray()");
     m_trayIcon = std::make_unique<TrayIcon>();
     m_trayIcon->Initialize(m_hwnd, m_trayCallbackMsg);
-    m_trayIcon->UpdateTheme(ThemeHelper::IsSystemLightTheme());
-    DebugTrace(L"[App] TrayIcon initialized, theme = {0}", ThemeHelper::IsSystemLightTheme() ? L"light" : L"dark");
+    DebugTrace(L"[App] TrayIcon initialized");
 
-    m_themeChangedToken = ThemeHelper::AddThemeChangedHandler([this](bool light) {
+    m_themeChangedToken = ThemeHelper::AddThemeChangedHandler([this]() {
         if (m_exiting.load() || !m_trayIcon) return;
-        DebugTrace(L"[App] Theme changed to {0}", light ? L"light" : L"dark");
-        m_trayIcon->UpdateTheme(light);
+        DebugTrace(L"[App] System theme changed");
+        m_trayIcon->UpdateTheme();
     });
 }
 
@@ -1185,7 +1184,7 @@ LRESULT CALLBACK winrt::AudioPlaybackConnector2::implementation::App::SubclassPr
     if (s_wmTaskbarCreated && msg == s_wmTaskbarCreated) {
         if (app->m_trayIcon) {
             app->m_trayIcon->Reregister();
-            app->m_trayIcon->UpdateTheme(ThemeHelper::IsSystemLightTheme());
+            app->m_trayIcon->UpdateTheme();
         }
         return 0;
     }

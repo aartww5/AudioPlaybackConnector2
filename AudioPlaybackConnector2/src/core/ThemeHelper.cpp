@@ -12,21 +12,25 @@ ThemeHelper::ThemeChangedToken ThemeHelper::s_nextToken = 1;
 /*//////// Public Interface /////////////////////////////////////////////////////////////////////////////////////*/
 /*------------------------------------------------------------------------------------------------------------------*/
 
-bool ThemeHelper::IsSystemLightTheme() {
+Theme ThemeHelper::GetSystemTheme() {
     DWORD value = 0, cb = sizeof(value);
-    auto hr = RegGetValueW(HKEY_CURRENT_USER,
-                           LR"(Software\Microsoft\Windows\CurrentVersion\Themes\Personalize)",
-                           L"SystemUsesLightTheme",
-                           RRF_RT_REG_DWORD,
-                           nullptr,
-                           &value,
-                           &cb);
-    return SUCCEEDED(hr) && value != 0;
+    auto status = RegGetValueW(HKEY_CURRENT_USER,
+                               LR"(Software\Microsoft\Windows\CurrentVersion\Themes\Personalize)",
+                               L"SystemUsesLightTheme",
+                               RRF_RT_REG_DWORD,
+                               nullptr,
+                               &value,
+                               &cb);
+    return (status == ERROR_SUCCESS && value != 0) ? Theme::Light : Theme::Dark;
 }
 
 void ThemeHelper::OnSettingChange(HWND, LPARAM lParam) {
     if (lParam && CompareStringOrdinal(reinterpret_cast<LPCWCH>(lParam), -1, L"ImmersiveColorSet", -1, TRUE) == CSTR_EQUAL) {
-        bool light = IsSystemLightTheme();
+        auto theme = GetSystemTheme();
+        static Theme s_lastTheme = theme;
+        if (theme == s_lastTheme) return;
+        s_lastTheme = theme;
+
         std::vector<ThemeChangedHandler> copy;
         {
             auto guard = s_lock.lock_shared();
@@ -36,7 +40,7 @@ void ThemeHelper::OnSettingChange(HWND, LPARAM lParam) {
             }
         }
         for (auto& h : copy)
-            h(light);
+            h();
     }
 }
 

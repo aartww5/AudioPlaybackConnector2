@@ -7,8 +7,16 @@
 /* Helpers */
 /*------------------------------------------------------------------------------------------------------------------*/
 
-static constexpr int ThemeIndexFromLightBackground(bool lightBackground) {
-    return lightBackground ? static_cast<int>(TrayThemeIndex::Light) : static_cast<int>(TrayThemeIndex::Dark);
+static Gdiplus::Color GetSystemBrushColor(const wchar_t* resourceKey) {
+    try {
+        auto resources = winrt::Microsoft::UI::Xaml::Application::Current().Resources();
+        auto obj = resources.Lookup(winrt::box_value(resourceKey));
+        auto brush = obj.as<winrt::Microsoft::UI::Xaml::Media::SolidColorBrush>();
+        auto c = brush.Color();
+        return Gdiplus::Color(c.A, c.R, c.G, c.B);
+    } catch (...) {
+        return Gdiplus::Color(128, 128, 128);
+    }
 }
 
 static HICON CreateHIconFromBitmap(Gdiplus::Bitmap& bitmap) {
@@ -103,7 +111,7 @@ void TrayIcon::Initialize(HWND hwnd, UINT callbackMessage) {
     m_nid.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_SHOWTIP | NIF_GUID;
     m_nid.uCallbackMessage = callbackMessage;
     m_nid.uVersion = NOTIFYICON_VERSION_4;
-    m_nid.hIcon = m_hIdle[0][GetBestIconSizeIndex()].get();
+    m_nid.hIcon = m_hIdle[GetBestIconSizeIndex()].get();
     m_nid.guidItem = m_guid;
 
     m_niid.cbSize = sizeof(m_niid);
@@ -151,11 +159,8 @@ void TrayIcon::ShowNotification(std::wstring_view title, std::wstring_view text,
     m_nid.uFlags &= ~NIF_INFO;
 }
 
-void TrayIcon::UpdateTheme(bool light) {
-    {
-        auto guard = m_lock.lock_exclusive();
-        m_lightTheme = light;
-    }
+void TrayIcon::UpdateTheme() {
+    CreateAllIcons();
     RefreshIcon();
 }
 
@@ -198,31 +203,42 @@ void TrayIcon::CreateAllIcons() {
         return;
     }
 
+    auto base = GetSystemBrushColor(L"TextFillColorPrimaryBrush");
+    auto success = GetSystemBrushColor(L"SystemFillColorSuccessBrush");
+    auto critical = GetSystemBrushColor(L"SystemFillColorCriticalBrush");
+    auto caution = GetSystemBrushColor(L"SystemFillColorCautionBrush");
+    auto cautionBackground = GetSystemBrushColor(L"SystemFillColorCautionBackgroundBrush");
+
+    decltype(m_hIdle) idle{};
+    decltype(m_hConnected) connected{};
+    decltype(m_hError) error{};
+    decltype(m_hConnecting1) connecting1{};
+    decltype(m_hConnecting2) connecting2{};
+
     for (int i = 0; i < SIZE_COUNT; ++i) {
         int size = SIZES[i];
         try {
-            m_hIdle[0][i] = CreateIconFromImage(*baseImage, size, Gdiplus::Color(32, 32, 32));
-            m_hIdle[1][i] = CreateIconFromImage(*baseImage, size, Gdiplus::Color(255, 255, 255));
-            m_hConnected[0][i] = CreateIconFromImage(*baseImage, size, Gdiplus::Color(159, 216, 159));
-            m_hConnected[1][i] = CreateIconFromImage(*baseImage, size, Gdiplus::Color(159, 216, 159));
-            m_hError[0][i] = CreateIconFromImage(*baseImage, size, Gdiplus::Color(180, 0, 0));
-            m_hError[1][i] = CreateIconFromImage(*baseImage, size, Gdiplus::Color(255, 80, 80));
-            m_hConnecting1[0][i] = CreateIconFromImage(*baseImage, size, Gdiplus::Color(200, 100, 0));
-            m_hConnecting1[1][i] = CreateIconFromImage(*baseImage, size, Gdiplus::Color(255, 160, 0));
-            m_hConnecting2[0][i] = CreateIconFromImage(*baseImage, size, Gdiplus::Color(255, 180, 50));
-            m_hConnecting2[1][i] = CreateIconFromImage(*baseImage, size, Gdiplus::Color(255, 200, 100));
+            idle[i] = CreateIconFromImage(*baseImage, size, base);
+            connected[i] = CreateIconFromImage(*baseImage, size, success);
+            error[i] = CreateIconFromImage(*baseImage, size, critical);
+            connecting1[i] = CreateIconFromImage(*baseImage, size, caution);
+            connecting2[i] = CreateIconFromImage(*baseImage, size, cautionBackground);
         } catch (...) {
-            m_hIdle[0][i].reset();
-            m_hIdle[1][i].reset();
-            m_hConnected[0][i].reset();
-            m_hConnected[1][i].reset();
-            m_hError[0][i].reset();
-            m_hError[1][i].reset();
-            m_hConnecting1[0][i].reset();
-            m_hConnecting1[1][i].reset();
-            m_hConnecting2[0][i].reset();
-            m_hConnecting2[1][i].reset();
+            idle[i].reset();
+            connected[i].reset();
+            error[i].reset();
+            connecting1[i].reset();
+            connecting2[i].reset();
         }
+    }
+
+    auto guard = m_lock.lock_exclusive();
+    for (int i = 0; i < SIZE_COUNT; ++i) {
+        m_hIdle[i] = std::move(idle[i]);
+        m_hConnected[i] = std::move(connected[i]);
+        m_hError[i] = std::move(error[i]);
+        m_hConnecting1[i] = std::move(connecting1[i]);
+        m_hConnecting2[i] = std::move(connecting2[i]);
     }
 }
 
@@ -240,19 +256,17 @@ int TrayIcon::GetBestIconSizeIndex() {
 
 void TrayIcon::RefreshIcon() {
     int sizeIdx = GetBestIconSizeIndex();
-    int idx;
     TrayIconState state;
     bool connectingFrame;
     auto guard = m_lock.lock_exclusive();
-    idx = ThemeIndexFromLightBackground(m_lightTheme);
     state = m_state;
     connectingFrame = m_connectingFrame;
     HICON hIcon = nullptr;
     switch (state) {
-        case TrayIconState::Idle: hIcon = m_hIdle[idx][sizeIdx].get(); break;
-        case TrayIconState::Connected: hIcon = m_hConnected[idx][sizeIdx].get(); break;
-        case TrayIconState::Error: hIcon = m_hError[idx][sizeIdx].get(); break;
-        case TrayIconState::Connecting: hIcon = connectingFrame ? m_hConnecting2[idx][sizeIdx].get() : m_hConnecting1[idx][sizeIdx].get(); break;
+        case TrayIconState::Idle: hIcon = m_hIdle[sizeIdx].get(); break;
+        case TrayIconState::Connected: hIcon = m_hConnected[sizeIdx].get(); break;
+        case TrayIconState::Error: hIcon = m_hError[sizeIdx].get(); break;
+        case TrayIconState::Connecting: hIcon = connectingFrame ? m_hConnecting2[sizeIdx].get() : m_hConnecting1[sizeIdx].get(); break;
     }
     m_nid.hIcon = hIcon;
     Shell_NotifyIconW(NIM_MODIFY, &m_nid);

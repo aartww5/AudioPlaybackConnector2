@@ -118,7 +118,7 @@ void SettingsWindow::RootGrid_Loaded(IInspectable const&, RoutedEventArgs const&
         DWM_WINDOW_CORNER_PREFERENCE corner = DWMWCP_ROUND;
         DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &corner, sizeof(corner));
 
-        BOOL dark = !ThemeHelper::IsSystemLightTheme();
+        BOOL dark = ThemeHelper::GetSystemTheme() == Theme::Dark;
         DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &dark, sizeof(dark));
 
         // Only show the window once content and DWM styling are fully ready.

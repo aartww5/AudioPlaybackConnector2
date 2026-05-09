@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fall back to tray balloon notifications when Windows App SDK toast notifications are unavailable.
 - Updated package notification metadata and third-party notices for toast notification support.
 - Updated tray icon image color-matrix initialization for clearer structured initialization.
+- Refactored `ThemeHelper` to use a strongly-typed `Theme` enum instead of `bool`.
+- Tray icons now dynamically query system brush colors (`TextFillColorPrimaryBrush`, `SystemFillColorSuccessBrush`, etc.) instead of hardcoded light/dark palettes.
+- Reduced tray icon storage from a `[theme][size]` matrix to `[size]` by removing the static light/dark dichotomy.
+- Added deduplication in `ThemeHelper::OnSettingChange` so theme-changed handlers only fire when the theme actually changes.
 
 ## [0.2.0] - 2026-05-08
 

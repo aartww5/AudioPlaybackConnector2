@@ -4,20 +4,23 @@
 /*//////// Theme Helper //////////////////////////////////////////////////////////////////////////////////////////*/
 /*------------------------------------------------------------------------------------------------------------------*/
 
+enum class Theme { Light,
+                   Dark };
+
 class ThemeHelper {
 public:
     /*------------------------------------------------------------------------------------------------------------------*/
     /*//////// Type Aliases //////////////////////////////////////////////////////////////////////////////////////////*/
     /*------------------------------------------------------------------------------------------------------------------*/
 
-    using ThemeChangedHandler = std::function<void(bool light)>;
+    using ThemeChangedHandler = std::function<void()>;
     using ThemeChangedToken = std::size_t;
 
     /*------------------------------------------------------------------------------------------------------------------*/
     /*//////// Public Interface //////////////////////////////////////////////////////////////////////////////////////*/
     /*------------------------------------------------------------------------------------------------------------------*/
 
-    static bool IsSystemLightTheme();
+    static Theme GetSystemTheme();
     static void OnSettingChange(HWND hwnd, LPARAM lParam);
     static ThemeChangedToken AddThemeChangedHandler(ThemeChangedHandler handler);
     static void RemoveThemeChangedHandler(ThemeChangedToken token);
