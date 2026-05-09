@@ -128,6 +128,8 @@
     <ClInclude Include="include\core\ThemeHelper.hpp" />
     <ClInclude Include="include\core\Settings.hpp" />
     <ClInclude Include="include\core\DeviceManager.hpp" />
+    <ClInclude Include="include\services\NotificationService.hpp" />
+    <ClInclude Include="include\services\TrayController.hpp" />
     <ClInclude Include="include\ui\TrayIcon.hpp" />
     <ClInclude Include="include\ui\TrayContextMenu.hpp" />
     <Midl Include="ui\DevicePickerView\DevicePickerView.idl" />
@@ -160,6 +162,8 @@
     <ClCompile Include="src\core\ThemeHelper.cpp" />
     <ClCompile Include="src\core\Settings.cpp" />
     <ClCompile Include="src\core\DeviceManager.cpp" />
+    <ClCompile Include="src\services\NotificationService.cpp" />
+    <ClCompile Include="src\services\TrayController.cpp" />
     <ClCompile Include="src\ui\TrayIcon.cpp" />
     <ClCompile Include="src\ui\TrayContextMenu.cpp" />
     <ClCompile Include="ui\DevicePickerView\DevicePickerView.xaml.cpp">

@@ -1,6 +1,4 @@
 #include <pch.h>
-#include <appmodel.h>
-#include <winrt/Microsoft.Windows.AppNotifications.h>
 #include <ui/App/App.xaml.h>
 #include <MainWindow/MainWindow.xaml.h>
 #include <SettingsWindow/SettingsWindow.xaml.h>
@@ -16,157 +14,20 @@
 
 using namespace winrt;
 using namespace winrt::Microsoft::UI::Xaml;
-namespace AppNotifications = winrt::Microsoft::Windows::AppNotifications;
 
 /* Helpers */
 /*------------------------------------------------------------------------------------------------------------------*/
 
-static std::wstring ReplaceFirstPlaceholder(std::wstring_view templateStr, std::wstring_view replacement) {
-    std::wstring result;
-    size_t pos = 0;
-    while (pos < templateStr.size()) {
-        auto found = templateStr.find(L"{0}", pos);
-        if (found == std::wstring_view::npos) {
-            result.append(templateStr.substr(pos));
-            break;
-        }
-        result.append(templateStr.substr(pos, found - pos));
-        result.append(replacement);
-        pos = found + 3;
-    }
-    return result;
-}
-
-static std::wstring NotificationText(std::string_view key, std::wstring_view replacement = {}) {
-    return ReplaceFirstPlaceholder(std::wstring(_(key)), replacement);
-}
-
-static std::wstring XmlEscape(std::wstring_view value) {
-    std::wstring result;
-    result.reserve(value.size());
-    for (auto ch : value) {
-        switch (ch) {
-            case L'&': result += L"&amp;"; break;
-            case L'<': result += L"&lt;"; break;
-            case L'>': result += L"&gt;"; break;
-            case L'"': result += L"&quot;"; break;
-            case L'\'': result += L"&apos;"; break;
-            default: result += ch; break;
-        }
-    }
-    return result;
-}
-
-static winrt::hstring ToastArguments(std::wstring_view action, winrt::hstring const& deviceId) {
-    return winrt::hstring(L"action=") + winrt::hstring(action) + L"&deviceId=" + winrt::Windows::Foundation::Uri::EscapeComponent(deviceId);
-}
-
-static std::wstring UrlDecodeComponent(std::wstring_view value) {
-    std::wstring normalized(value);
-    std::replace(normalized.begin(), normalized.end(), L'+', L' ');
-
-    try {
-        return std::wstring(winrt::Windows::Foundation::Uri::UnescapeComponent(winrt::hstring(normalized)));
-    } catch (...) {
-        return normalized;
+namespace {
+TrayNotificationType ToTrayNotificationType(NotificationService::FallbackNotificationType type) {
+    switch (type) {
+        case NotificationService::FallbackNotificationType::Warning: return TrayNotificationType::Warning;
+        case NotificationService::FallbackNotificationType::Error: return TrayNotificationType::Error;
+        case NotificationService::FallbackNotificationType::Info:
+        default: return TrayNotificationType::Info;
     }
 }
-
-static std::unordered_map<std::wstring, std::wstring> ParseToastArgumentString(winrt::hstring const& rawArguments) {
-    std::unordered_map<std::wstring, std::wstring> result;
-    std::wstring_view raw(rawArguments.c_str(), rawArguments.size());
-
-    size_t start = 0;
-    while (start <= raw.size()) {
-        const auto separator = raw.find(L'&', start);
-        const auto end = separator == std::wstring_view::npos ? raw.size() : separator;
-        const auto pair = raw.substr(start, end - start);
-
-        if (!pair.empty()) {
-            const auto equals = pair.find(L'=');
-            const auto key = equals == std::wstring_view::npos ? pair : pair.substr(0, equals);
-            const auto value = equals == std::wstring_view::npos ? std::wstring_view{} : pair.substr(equals + 1);
-            auto decodedKey = UrlDecodeComponent(key);
-            if (!decodedKey.empty()) {
-                result[std::move(decodedKey)] = UrlDecodeComponent(value);
-            }
-        }
-
-        if (separator == std::wstring_view::npos) break;
-        start = separator + 1;
-    }
-
-    return result;
-}
-
-static std::optional<std::wstring> FindToastArgument(std::unordered_map<std::wstring, std::wstring> const& arguments, std::wstring_view key) {
-    auto it = arguments.find(std::wstring(key));
-    if (it == arguments.end() || it->second.empty()) return std::nullopt;
-    return it->second;
-}
-
-static std::wstring_view AsView(winrt::hstring const& value) {
-    return std::wstring_view(value.c_str(), value.size());
-}
-
-static winrt::Windows::Foundation::DateTime ExpirationFromNow(std::chrono::seconds seconds) {
-    return winrt::clock::now() + seconds;
-}
-
-static bool IsPackagedProcess() {
-    UINT32 length = 0;
-    const auto result = GetCurrentPackageFullName(&length, nullptr);
-    return result != APPMODEL_ERROR_NO_PACKAGE;
-}
-
-static std::wstring BuildToastXml(std::wstring_view title,
-                                  std::wstring_view body,
-                                  std::wstring_view caption,
-                                  std::wstring_view actionText,
-                                  winrt::hstring const& actionArgs,
-                                  std::wstring_view appLogoOverride,
-                                  std::wstring_view audioXml,
-                                  std::wstring_view duration = {}) {
-    std::wstring xml = L"<toast";
-    if (!duration.empty()) {
-        xml += L" duration=\"";
-        xml += XmlEscape(duration);
-        xml += L"\"";
-    }
-    xml += L"><visual><binding template=\"ToastGeneric\">";
-    if (!appLogoOverride.empty()) {
-        xml += L"<image placement=\"appLogoOverride\" hint-crop=\"circle\" src=\"";
-        xml += XmlEscape(appLogoOverride);
-        xml += L"\"/>";
-    }
-    xml += L"<text>";
-    xml += XmlEscape(title);
-    xml += L"</text>";
-    if (!body.empty()) {
-        xml += L"<text>";
-        xml += XmlEscape(body);
-        xml += L"</text>";
-    }
-    if (!caption.empty()) {
-        xml += L"<text hint-style=\"caption\" hint-color=\"secondary\">";
-        xml += XmlEscape(caption);
-        xml += L"</text>";
-    }
-    xml += L"</binding></visual>";
-    if (!actionText.empty()) {
-        xml += L"<actions><action content=\"";
-        xml += XmlEscape(actionText);
-        xml += L"\" arguments=\"";
-        xml += XmlEscape(AsView(actionArgs));
-        xml += L"\"/></actions>";
-    }
-    xml += audioXml;
-    xml += L"</toast>";
-    return xml;
-}
-
-/* Member Variables */
-/*------------------------------------------------------------------------------------------------------------------*/
+} // namespace
 
 namespace winrt::AudioPlaybackConnector2::implementation {
 std::atomic<App*> App::s_instance = nullptr;
@@ -182,11 +43,8 @@ winrt::AudioPlaybackConnector2::implementation::App::App() {
 
 winrt::AudioPlaybackConnector2::implementation::App::~App() {
     TeardownDeviceEvents();
-    TeardownNotifications();
-    if (m_themeChangedToken) {
-        ThemeHelper::RemoveThemeChangedHandler(m_themeChangedToken);
-        m_themeChangedToken = 0;
-    }
+    m_notificationService.reset();
+    m_trayController.reset();
     s_instance.store(nullptr);
 }
 
@@ -283,19 +141,19 @@ void winrt::AudioPlaybackConnector2::implementation::App::OnMainWindowLoaded(Con
         }
     });
 
+    InitializeDeviceManager();
     InitializeTray();
     InitializeNotifications();
-    InitializeDeviceManager();
-    InitializeContextMenu();
-    PreloadDevicePicker();
     SetupDeviceEvents();
-    ShowAppStartedNotification();
+    if (m_notificationService) {
+        m_notificationService->ShowAppStarted();
+    }
     TryAutoReconnect();
 
     gdiplusGuard.release();
 
     s_wmTaskbarCreated = RegisterWindowMessageW(L"TaskbarCreated");
-    UpdateTrayTooltip();
+    m_trayController->UpdateTooltipFromConnections();
     DebugTrace(L"[App] Initialization complete");
 }
 
@@ -305,71 +163,52 @@ void winrt::AudioPlaybackConnector2::implementation::App::OnMainWindowLoaded(Con
 
 void winrt::AudioPlaybackConnector2::implementation::App::InitializeTray() {
     DebugTrace(L"[App] InitializeTray()");
-    m_trayIcon = std::make_unique<TrayIcon>();
-    m_trayIcon->Initialize(m_hwnd, m_trayCallbackMsg);
-    DebugTrace(L"[App] TrayIcon initialized");
-
-    m_themeChangedToken = ThemeHelper::AddThemeChangedHandler([this]() {
-        if (m_exiting.load() || !m_trayIcon) return;
-        DebugTrace(L"[App] System theme changed");
-        m_trayIcon->UpdateTheme();
-    });
+    m_trayController = std::make_unique<TrayController>();
+    m_trayController->Initialize(m_hwnd, m_mainWindow);
+    m_trayController->SetDeviceManager(m_deviceManager);
+    auto weak = get_weak();
+    m_trayController->SetCallbacks(
+        [weak]() {
+            if (auto self = weak.get()) self->ShowSettingsWindow();
+        },
+        [weak]() {
+            if (auto self = weak.get()) self->ExitApplication();
+        },
+        [weak](winrt::hstring id) {
+            if (auto self = weak.get(); self && self->m_deviceManager) self->m_deviceManager->ConnectAsync(id);
+        },
+        [weak](winrt::hstring id) {
+            if (auto self = weak.get(); self && self->m_deviceManager) self->m_deviceManager->Disconnect(id);
+        },
+        [weak](winrt::hstring id) {
+            if (auto self = weak.get(); self && self->m_deviceManager) self->m_deviceManager->ReconnectAsync(id);
+        });
+    m_trayController->PreloadDevicePicker();
+    DebugTrace(L"[App] TrayController initialized");
 }
 
 void winrt::AudioPlaybackConnector2::implementation::App::InitializeNotifications() {
     DebugTrace(L"[App] InitializeNotifications()");
-
-    try {
-        if (!AppNotifications::AppNotificationManager::IsSupported()) {
-            DebugTrace(L"[App] AppNotificationManager is not supported; using tray balloon fallback");
-            return;
+    m_notificationService = std::make_unique<NotificationService>();
+    auto weak = get_weak();
+    m_notificationService->SetReconnectCallback([weak](winrt::hstring deviceId) {
+        if (auto self = weak.get()) {
+            self->RunOnUIThread([weak, deviceId = std::move(deviceId)]() mutable {
+                if (auto self = weak.get()) {
+                    if (self->m_exiting.load() || !self->m_deviceManager) return;
+                    self->m_deviceManager->ReconnectAsync(deviceId);
+                }
+            });
         }
-
-        m_notificationManager = AppNotifications::AppNotificationManager::Default();
-        auto weak = get_weak();
-        m_notificationInvokedToken = m_notificationManager.NotificationInvoked([weak](auto const&, auto const& args) {
-            if (auto self = weak.get()) {
-                self->RunOnUIThread([weak, args]() {
-                    if (auto self = weak.get()) self->OnNotificationInvoked(args);
-                });
-            }
-        });
-
-        if (IsPackagedProcess()) {
-            m_notificationManager.Register();
-        } else {
-            m_notificationManager.Register(_("AppName"), winrt::Windows::Foundation::Uri(L"ms-appx:///Images/Square44x44Logo.png"));
+    });
+    m_notificationService->SetFallbackNotifier([weak](std::wstring const& title, std::wstring const& body, NotificationService::FallbackNotificationType type) {
+        if (auto self = weak.get()) {
+            if (self->m_exiting.load() || !self->m_trayController) return;
+            self->m_trayController->ShowNotification(title, body, ToTrayNotificationType(type));
         }
-
-        m_notificationsRegistered = true;
-        DebugTrace(L"[App] AppNotificationManager registered");
-    } catch (winrt::hresult_error const& ex) {
-        DebugTrace(L"[App] AppNotificationManager registration failed: 0x{0:X} {1}", static_cast<uint32_t>(ex.code()), ex.message());
-        m_notificationManager = nullptr;
-        m_notificationsRegistered = false;
-    } catch (...) {
-        DebugTrace(L"[App] AppNotificationManager registration failed: unknown exception");
-        m_notificationManager = nullptr;
-        m_notificationsRegistered = false;
-    }
-}
-
-void winrt::AudioPlaybackConnector2::implementation::App::TeardownNotifications() {
-    if (!m_notificationManager) return;
-
-    try {
-        if (m_notificationInvokedToken.value) {
-            m_notificationManager.NotificationInvoked(m_notificationInvokedToken);
-            m_notificationInvokedToken = {};
-        }
-        if (m_notificationsRegistered) {
-            m_notificationManager.Unregister();
-            m_notificationsRegistered = false;
-        }
-    } catch (...) {
-    }
-
-    m_notificationManager = nullptr;
+    });
+    m_notificationsAvailable = m_notificationService->Initialize(winrt::hstring(_("AppName")), winrt::Windows::Foundation::Uri(L"ms-appx:///Images/Square44x44Logo.png"));
+    DebugTrace(L"[App] Notifications available: {0}", m_notificationsAvailable);
 }
 
 void winrt::AudioPlaybackConnector2::implementation::App::InitializeDeviceManager() {
@@ -387,40 +226,35 @@ void winrt::AudioPlaybackConnector2::implementation::App::InitializeDeviceManage
     DebugTrace(L"[App] DeviceManager initialized and watcher started");
 }
 
-void winrt::AudioPlaybackConnector2::implementation::App::InitializeContextMenu() {
-    DebugTrace(L"[App] InitializeContextMenu()");
-    if (!m_mainWindow.Content()) {
-        DebugTrace(L"[App] ERROR: MainWindow.Content() is null!");
-        return;
-    }
-
-    auto root = m_mainWindow.Content().as<Controls::Grid>();
-    if (!root) {
-        DebugTrace(L"[App] ERROR: MainWindow.Content() is not a Grid!");
-        return;
-    }
-
-    if (!root.XamlRoot()) {
-        DebugTrace(L"[App] ERROR: Grid.XamlRoot() is null! ContextMenu will fail.");
-        return;
-    }
-    DebugTrace(L"[App] Grid.XamlRoot() is valid");
-
-    m_contextMenu = std::make_unique<TrayContextMenu>();
-    m_contextMenu->Initialize(root, [this]() { ShowSettingsWindow(); }, [this]() { LaunchBluetoothSettings(); }, [this]() { ExitApplication(); }, [this]() {
-            if (m_hwnd && IsWindow(m_hwnd)) {
-                SetWindowPos(m_hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-            } });
-    DebugTrace(L"[App] TrayContextMenu initialized");
+winrt::hstring winrt::AudioPlaybackConnector2::implementation::App::ResolveKnownDeviceName(winrt::hstring const& id) const {
+    if (!m_settings) return id;
+    auto locked = m_settings->LockSharedData();
+    auto it = std::find_if(locked->Devices.begin(), locked->Devices.end(), [&](const auto& device) { return device.Id == id; });
+    if (it != locked->Devices.end()) return winrt::hstring(it->Name);
+    return id;
 }
 
-void winrt::AudioPlaybackConnector2::implementation::App::LaunchBluetoothSettings() {
-    auto op = winrt::Windows::System::Launcher::LaunchUriAsync(winrt::Windows::Foundation::Uri(L"ms-settings:bluetooth"));
-    op.Completed([](auto const& sender, auto const&) {
-        if (!sender.GetResults()) {
-            DebugTrace(L"[App] LaunchUriAsync(ms-settings:bluetooth) failed");
+void winrt::AudioPlaybackConnector2::implementation::App::TryAutoReconnect() {
+    if (m_exiting.load() || !m_settings || !m_deviceManager) return;
+
+    DebugTrace(L"[App] TryAutoReconnect()");
+    bool globalAutoReconnect = false;
+    std::vector<std::wstring> lastConnectedIds;
+    std::vector<DeviceSettings> devices;
+    {
+        auto locked = m_settings->LockSharedData();
+        globalAutoReconnect = locked->GlobalAutoReconnect;
+        lastConnectedIds = locked->LastConnectedIds;
+        devices = locked->Devices;
+    }
+
+    for (const auto& id : lastConnectedIds) {
+        auto device = std::find_if(devices.begin(), devices.end(), [&](const auto& knownDevice) { return knownDevice.Id == id; });
+        if (device != devices.end() && (globalAutoReconnect || device->AutoReconnect)) {
+            DebugTrace(L"[App] Auto-reconnecting to: {0}", id);
+            m_deviceManager->ConnectAsync(winrt::hstring(id));
         }
-    });
+    }
 }
 
 void winrt::AudioPlaybackConnector2::implementation::App::RunOnUIThread(std::function<void()> work) {
@@ -484,12 +318,12 @@ void winrt::AudioPlaybackConnector2::implementation::App::SetupDeviceEvents() {
             self->RunOnUIThread([weak, id, status]() {
                 auto self = weak.get();
                 if (!self) return;
-                if (self->m_exiting.load() || !self->m_trayIcon || !self->m_deviceManager) return;
+                if (self->m_exiting.load() || !self->m_trayController || !self->m_deviceManager) return;
                 if (!self->m_hwnd || !IsWindow(self->m_hwnd)) return;
                 if (status == winrt::hstring(_("Connecting")) || status == winrt::hstring(_("Reconnecting"))) {
-                    self->m_trayIcon->SetState(TrayIconState::Connecting);
+                    self->m_trayController->SetState(TrayIconState::Connecting);
                     SetTimer(self->m_hwnd, c_timerAnimation, 200, nullptr);
-                    self->UpdateTrayTooltip();
+                    self->m_trayController->UpdateTooltipFromConnections();
                 } else if (status == winrt::hstring(_("Connected"))) {
                     bool isStillConnected = false;
                     for (const auto& c : self->m_deviceManager->GetConnectedDevices()) {
@@ -500,14 +334,14 @@ void winrt::AudioPlaybackConnector2::implementation::App::SetupDeviceEvents() {
                     }
                     if (!isStillConnected) return;
                     KillTimer(self->m_hwnd, c_timerAnimation);
-                    self->m_trayIcon->SetState(TrayIconState::Connected);
+                    self->m_trayController->SetState(TrayIconState::Connected);
                 } else if (!status.empty()) {
                     KillTimer(self->m_hwnd, c_timerAnimation);
-                    self->m_trayIcon->SetState(TrayIconState::Error);
+                    self->m_trayController->SetState(TrayIconState::Error);
                 } else {
                     KillTimer(self->m_hwnd, c_timerAnimation);
-                    self->m_trayIcon->SetState(TrayIconState::Idle);
-                    self->UpdateTrayTooltip();
+                    self->m_trayController->SetState(TrayIconState::Idle);
+                    self->m_trayController->UpdateTooltipFromConnections();
                 }
             });
         }
@@ -542,195 +376,6 @@ void winrt::AudioPlaybackConnector2::implementation::App::TeardownDeviceEvents()
     }
 }
 
-winrt::hstring winrt::AudioPlaybackConnector2::implementation::App::ResolveKnownDeviceName(winrt::hstring const& id) const {
-    if (!m_settings) return id;
-    auto locked = m_settings->LockSharedData();
-    auto it = std::find_if(locked->Devices.begin(), locked->Devices.end(), [&](const auto& d) { return d.Id == id; });
-    if (it != locked->Devices.end()) return winrt::hstring(it->Name);
-    return id;
-}
-
-void winrt::AudioPlaybackConnector2::implementation::App::OnNotificationInvoked(AppNotifications::AppNotificationActivatedEventArgs const& args) {
-    if (m_exiting.load() || !m_deviceManager) return;
-
-    try {
-        auto parsedArguments = ParseToastArgumentString(args.Argument());
-        auto action = FindToastArgument(parsedArguments, L"action");
-        auto deviceId = FindToastArgument(parsedArguments, L"deviceId");
-
-        if (!deviceId) {
-            DebugTrace(L"[App] App notification invoked without deviceId: {0}", std::wstring(args.Argument()));
-            return;
-        }
-
-        DebugTrace(L"[App] App notification invoked: action={0}, deviceId={1}", action.value_or(L""), *deviceId);
-
-        if (action && (*action == L"reconnect" || *action == L"retry")) {
-            m_deviceManager->ReconnectAsync(winrt::hstring(*deviceId));
-        }
-    } catch (winrt::hresult_error const& ex) {
-        DebugTrace(L"[App] App notification activation failed: 0x{0:X} {1}", static_cast<uint32_t>(ex.code()), ex.message());
-    } catch (...) {
-        DebugTrace(L"[App] App notification activation failed: unknown exception");
-    }
-}
-
-bool winrt::AudioPlaybackConnector2::implementation::App::TryShowToast(std::wstring const& xml, winrt::hstring const& tag, winrt::Windows::Foundation::DateTime const& expiration) {
-    if (!m_notificationManager || !m_notificationsRegistered) return false;
-
-    try {
-        AppNotifications::AppNotification notification{winrt::hstring(xml)};
-        notification.Group(L"audioPlaybackConnector");
-        notification.Tag(tag);
-        notification.Expiration(expiration);
-        notification.ExpiresOnReboot(true);
-        m_notificationManager.Show(notification);
-        return true;
-    } catch (winrt::hresult_error const& ex) {
-        DebugTrace(L"[App] AppNotificationManager.Show failed: 0x{0:X} {1}", static_cast<uint32_t>(ex.code()), ex.message());
-    } catch (...) {
-        DebugTrace(L"[App] AppNotificationManager.Show failed: unknown exception");
-    }
-
-    return false;
-}
-
-void winrt::AudioPlaybackConnector2::implementation::App::ShowAppStartedNotification() {
-    auto title = NotificationText("Notification_AppStarted_Title");
-    auto body = NotificationText("Notification_AppStarted_Body");
-    auto xml = BuildToastXml(title, body, L"", L"", L"", L"ms-appx:///Images/ToastInfo.png", L"<audio silent=\"true\"/>");
-    if (!TryShowToast(xml, L"appStarted", ExpirationFromNow(std::chrono::minutes(1))) && m_trayIcon) {
-        m_trayIcon->ShowNotification(_("AppName"), body, TrayNotificationType::Info);
-    }
-}
-
-void winrt::AudioPlaybackConnector2::implementation::App::ShowDeviceConnectedNotification(winrt::hstring const& id, winrt::hstring const& deviceName) {
-    if (m_notificationManager && m_notificationsRegistered) {
-        try {
-            auto removeOperation = m_notificationManager.RemoveByTagAndGroupAsync(winrt::hstring(L"autoReconnect:") + id, L"audioPlaybackConnector");
-            (void)removeOperation;
-        } catch (...) {
-        }
-    }
-
-    auto title = NotificationText("Notification_Connected", deviceName);
-    auto xml = BuildToastXml(title,
-                             L"",
-                             NotificationText("Notification_Connected_Caption"),
-                             NotificationText("Reconnect"),
-                             ToastArguments(L"reconnect", id),
-                             L"ms-appx:///Images/ToastConnected.png",
-                             L"<audio src=\"ms-winsoundevent:Notification.Default\"/>",
-                             L"long");
-
-    if (!TryShowToast(xml, winrt::hstring(L"deviceConnected:") + id, ExpirationFromNow(std::chrono::hours(1))) && m_trayIcon) {
-        auto msg = ReplaceFirstPlaceholder(std::wstring(_("Notification_Connected")), deviceName);
-        m_trayIcon->ShowNotification(_("AppName"), msg, TrayNotificationType::Info);
-    }
-}
-
-void winrt::AudioPlaybackConnector2::implementation::App::ShowDeviceDisconnectedNotification(winrt::hstring const& id, winrt::hstring const& deviceName) {
-    auto title = NotificationText("Notification_Disconnected", deviceName);
-    auto xml = BuildToastXml(title,
-                             NotificationText("Notification_Disconnected_Body"),
-                             L"",
-                             L"",
-                             L"",
-                             L"ms-appx:///Images/ToastWarning.png",
-                             L"<audio silent=\"true\"/>");
-
-    if (!TryShowToast(xml, winrt::hstring(L"deviceDisconnected:") + id, ExpirationFromNow(std::chrono::minutes(1))) && m_trayIcon) {
-        auto msg = ReplaceFirstPlaceholder(std::wstring(_("Notification_Disconnected")), deviceName);
-        m_trayIcon->ShowNotification(_("AppName"), msg, TrayNotificationType::Warning);
-    }
-}
-
-void winrt::AudioPlaybackConnector2::implementation::App::ShowAutoReconnectNotification(winrt::hstring const& id, winrt::hstring const& deviceName) {
-    auto title = NotificationText("Notification_AutoReconnect", deviceName);
-    auto xml = BuildToastXml(title,
-                             NotificationText("Notification_AutoReconnect_Body"),
-                             L"",
-                             L"",
-                             L"",
-                             L"ms-appx:///Images/ToastReconnect.png",
-                             L"<audio silent=\"true\"/>");
-
-    if (!TryShowToast(xml, winrt::hstring(L"autoReconnect:") + id, ExpirationFromNow(std::chrono::minutes(1))) && m_trayIcon) {
-        auto msg = ReplaceFirstPlaceholder(std::wstring(_("Notification_AutoReconnect")), deviceName);
-        m_trayIcon->ShowNotification(_("AppName"), msg, TrayNotificationType::Info);
-    }
-}
-
-void winrt::AudioPlaybackConnector2::implementation::App::ShowAutoReconnectFailedNotification(winrt::hstring const& id, winrt::hstring const& deviceName) {
-    auto title = NotificationText("Notification_AutoReconnectFailed_Title", deviceName);
-    auto xml = BuildToastXml(title,
-                             NotificationText("Notification_AutoReconnectFailed_Body"),
-                             L"",
-                             NotificationText("Notification_Retry"),
-                             ToastArguments(L"retry", id),
-                             L"ms-appx:///Images/ToastError.png",
-                             L"<audio src=\"ms-winsoundevent:Notification.Looping.Alarm2\"/>");
-
-    if (!TryShowToast(xml, winrt::hstring(L"autoReconnect:") + id, ExpirationFromNow(std::chrono::hours(1))) && m_trayIcon) {
-        auto msg = ReplaceFirstPlaceholder(std::wstring(_("Notification_AutoReconnectFailed")), deviceName);
-        m_trayIcon->ShowNotification(_("AppName"), msg, TrayNotificationType::Error);
-    }
-}
-
-void winrt::AudioPlaybackConnector2::implementation::App::TryAutoReconnect() {
-    DebugTrace(L"[App] TryAutoReconnect()");
-    bool globalAutoReconnect = false;
-    std::vector<std::wstring> lastConnectedIds;
-    {
-        auto locked = m_settings->LockSharedData();
-        globalAutoReconnect = locked->GlobalAutoReconnect;
-        lastConnectedIds = locked->LastConnectedIds;
-    }
-    for (const auto& id : lastConnectedIds) {
-        bool shouldReconnect = false;
-        {
-            auto locked = m_settings->LockSharedData();
-            auto it = std::find_if(locked->Devices.begin(), locked->Devices.end(), [&](const auto& d) { return d.Id == id; });
-            if (it != locked->Devices.end())
-                shouldReconnect = globalAutoReconnect || it->AutoReconnect;
-        }
-        if (shouldReconnect) {
-            DebugTrace(L"[App] Auto-reconnecting to: {0}", id);
-            m_deviceManager->ConnectAsync(winrt::hstring(id));
-        }
-    }
-}
-
-/*------------------------------------------------------------------------------------------------------------------*/
-/*//////// Tray Actions /////////////////////////////////////////////////////////////////////////////////////////*/
-/*------------------------------------------------------------------------------------------------------------------*/
-
-std::optional<POINT> winrt::AudioPlaybackConnector2::implementation::App::CalculateSettingsWindowPosition() const {
-    if (!m_trayIcon) return std::nullopt;
-    auto rect = m_trayIcon->GetIconRect();
-    if (!rect) return std::nullopt;
-
-    RECT rcWork{};
-    SystemParametersInfoW(SPI_GETWORKAREA, 0, &rcWork, 0);
-
-    int x = rect->right - c_settingsWindowWidth; // right-align to icon
-    int y = rect->bottom;                        // below the icon
-
-    // Keep within horizontal work area bounds.
-    if (x < rcWork.left) x = rcWork.left;
-    if (x + c_settingsWindowWidth > rcWork.right) x = rcWork.right - c_settingsWindowWidth;
-
-    // If it doesn't fit below the taskbar, open above the icon.
-    if (y + c_settingsWindowHeight > rcWork.bottom)
-        y = rect->top - c_settingsWindowHeight;
-
-    // Final safety fallback.
-    if (y < rcWork.top)
-        y = rcWork.bottom - c_settingsWindowHeight;
-
-    return POINT{x, y};
-}
-
 void winrt::AudioPlaybackConnector2::implementation::App::ShowSettingsWindow() {
     DebugTrace(L"[App] ShowSettingsWindow()");
     if (m_settingsWindow) {
@@ -747,8 +392,8 @@ void winrt::AudioPlaybackConnector2::implementation::App::ShowSettingsWindow() {
         m_settingsWindow = winrt::AudioPlaybackConnector2::SettingsWindow();
 
         auto impl = m_settingsWindow.as<winrt::AudioPlaybackConnector2::implementation::SettingsWindow>();
-        if (impl) {
-            if (auto pos = CalculateSettingsWindowPosition()) {
+        if (impl && m_trayController) {
+            if (auto pos = m_trayController->GetSettingsWindowPosition()) {
                 impl->SetTargetPosition(pos->x, pos->y);
             }
         }
@@ -790,7 +435,7 @@ void winrt::AudioPlaybackConnector2::implementation::App::ExitApplication() {
         m_deviceManager->StopDeviceWatcher();
         m_deviceManager->CancelPendingReconnects();
     }
-    TeardownNotifications();
+    m_notificationService.reset();
 
     // Don't synchronously Close() connections on exit – that can block the UI thread.
     // The OS will clean up the underlying Bluetooth handles when the process terminates.
@@ -804,7 +449,7 @@ void winrt::AudioPlaybackConnector2::implementation::App::ExitApplication() {
         m_settings->Save(GetModuleHandleW(nullptr));
     }
 
-    if (m_trayIcon) m_trayIcon->Remove();
+    m_trayController.reset();
     if (m_gdiplusToken) {
         Gdiplus::GdiplusShutdown(m_gdiplusToken);
         m_gdiplusToken = 0;
@@ -824,257 +469,12 @@ void winrt::AudioPlaybackConnector2::implementation::App::ExitApplication() {
     DebugTrace(L"[App] ExitApplication() complete");
 }
 
-void winrt::AudioPlaybackConnector2::implementation::App::UpdateTrayTooltip() {
-    if (m_exiting.load() || !m_trayIcon || !m_deviceManager) return;
-    auto connected = m_deviceManager->GetConnectedDevices();
-    if (connected.empty()) {
-        m_trayIcon->SetTooltip(_("AppName"));
-    } else {
-        std::wstring tip = std::wstring(_("AppName")) + L"\n";
-        for (const auto& c : connected) {
-            tip += c.Device.Name();
-            tip += L"\n";
-        }
-        m_trayIcon->SetTooltip(tip);
-    }
-}
-
-/*------------------------------------------------------------------------------------------------------------------*/
-/*//////// Tray Handlers ////////////////////////////////////////////////////////////////////////////////////////*/
-/*------------------------------------------------------------------------------------------------------------------*/
-
-void winrt::AudioPlaybackConnector2::implementation::App::EnsureDevicePickerViewCreated() {
-    if (m_devicePickerView) {
-        return;
-    }
-
-    auto root = m_mainWindow.Content().as<Controls::Grid>();
-    if (!root) {
-        DebugTrace(L"[App] ERROR: EnsureDevicePickerViewCreated failed, Content() is not a Grid");
-        return;
-    }
-    if (!root.XamlRoot()) {
-        DebugTrace(L"[App] ERROR: EnsureDevicePickerViewCreated failed, XamlRoot() is null");
-        return;
-    }
-
-    m_devicePickerView = winrt::AudioPlaybackConnector2::DevicePickerView();
-    auto impl = m_devicePickerView.as<winrt::AudioPlaybackConnector2::implementation::DevicePickerView>();
-    impl->Initialize(m_deviceManager, [this]() { if (m_pickerFlyout) m_pickerFlyout.Hide(); }, [this](winrt::hstring id) {
-            DebugTrace(L"[App] User selected device: {0}", std::wstring(id));
-            m_deviceManager->ConnectAsync(id);
-            if (m_pickerFlyout) m_pickerFlyout.Hide(); }, [this](winrt::hstring id) {
-            DebugTrace(L"[App] User disconnected device: {0}", std::wstring(id));
-            if (m_pickerFlyout) m_pickerFlyout.Hide();
-            m_deviceManager->Disconnect(id); }, [this](winrt::hstring id) {
-            DebugTrace(L"[App] User reconnected device: {0}", std::wstring(id));
-            m_deviceManager->ReconnectAsync(id); });
-}
-
-void winrt::AudioPlaybackConnector2::implementation::App::PreloadDevicePicker() {
-    if (m_devicePickerPreloaded) {
-        return;
-    }
-    m_devicePickerPreloaded = true;
-
-    EnsureDevicePickerViewCreated();
-
-    if (m_devicePickerView) {
-        auto impl = m_devicePickerView.as<winrt::AudioPlaybackConnector2::implementation::DevicePickerView>();
-        impl->LoadDevices();
-    }
-}
-
-void winrt::AudioPlaybackConnector2::implementation::App::StripFlyoutPresenterStyle(winrt::Microsoft::UI::Xaml::DependencyObject const& content) {
-    try {
-        auto parent = winrt::Microsoft::UI::Xaml::Media::VisualTreeHelper::GetParent(content);
-        while (parent) {
-            auto presenter = parent.try_as<Controls::FlyoutPresenter>();
-            if (presenter) {
-                presenter.Background(nullptr);
-                presenter.BorderBrush(nullptr);
-                presenter.BorderThickness({0});
-                presenter.Padding({0});
-                presenter.MinWidth(0);
-                presenter.MinHeight(0);
-                break;
-            }
-            parent = winrt::Microsoft::UI::Xaml::Media::VisualTreeHelper::GetParent(parent);
-        }
-    } catch (...) {
-    }
-}
-
-// Create a fresh Flyout each time to avoid WinUI 3 reuse exceptions.
-// The DevicePickerView (expensive) is reused; the Flyout (cheap) is recreated.
-Controls::Flyout winrt::AudioPlaybackConnector2::implementation::App::CreatePickerFlyout() {
-    Controls::Flyout flyout;
-    flyout.ShouldConstrainToRootBounds(false);
-    flyout.Content(m_devicePickerView);
-
-    flyout.Opened([this](auto&, auto&) {
-        if (m_pickerFlyout) {
-            StripFlyoutPresenterStyle(m_pickerFlyout.Content().as<winrt::Microsoft::UI::Xaml::DependencyObject>());
-        }
-    });
-
-    flyout.Closing([this](auto&, auto&) {
-        try {
-            // Cancel any in-flight device enumeration before detaching.
-            if (m_devicePickerView) {
-                auto impl = m_devicePickerView.as<winrt::AudioPlaybackConnector2::implementation::DevicePickerView>();
-                impl->CancelLoadDevices();
-            }
-            // Detach the reusable view before the flyout closes so WinUI 3
-            // does not touch (and potentially dispose) our cached content.
-            if (m_pickerFlyout) {
-                m_pickerFlyout.Content(nullptr);
-            }
-        } catch (...) {
-        }
-    });
-
-    flyout.Closed([this](auto&, auto&) {
-        DebugTrace(L"[App] Picker flyout closed");
-        if (m_hwnd && IsWindow(m_hwnd)) {
-            SetWindowPos(m_hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-        }
-        m_pickerFlyout = nullptr;
-    });
-
-    return flyout;
-}
-
-void winrt::AudioPlaybackConnector2::implementation::App::OnTrayIconLeftClick() {
-    DebugTrace(L"[App] OnTrayIconLeftClick()");
-
-    auto rect = m_trayIcon->GetIconRect();
-    if (!rect) {
-        DebugTrace(L"[App] ERROR: GetIconRect() returned null");
-        return;
-    }
-
-    auto root = m_mainWindow.Content().as<Controls::Grid>();
-    if (!root) {
-        DebugTrace(L"[App] ERROR: MainWindow.Content() is not a Grid");
-        return;
-    }
-
-    if (m_pickerFlyout && m_pickerFlyout.IsOpen()) {
-        DebugTrace(L"[App] Picker flyout already open, ignoring second click");
-        return;
-    }
-
-    EnsureDevicePickerViewCreated();
-
-    if (m_devicePickerView) {
-        auto impl = m_devicePickerView.as<winrt::AudioPlaybackConnector2::implementation::DevicePickerView>();
-        impl->LoadDevices();
-    }
-
-    m_pickerFlyout = CreatePickerFlyout();
-
-    POINT pt{rect->left, rect->top};
-    ScreenToClient(m_hwnd, &pt);
-    auto dpi = GetDpiForWindow(m_hwnd);
-    if (dpi == 0) dpi = USER_DEFAULT_SCREEN_DPI;
-
-    winrt::Windows::Foundation::Point point(
-        static_cast<float>(pt.x) * USER_DEFAULT_SCREEN_DPI / static_cast<float>(dpi),
-        static_cast<float>(pt.y) * USER_DEFAULT_SCREEN_DPI / static_cast<float>(dpi));
-
-    SetWindowPos(m_hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-    SetForegroundWindow(m_hwnd);
-
-    Controls::Primitives::FlyoutShowOptions options;
-    options.Position(point);
-    m_pickerFlyout.ShowAt(root, options);
-}
-
-void winrt::AudioPlaybackConnector2::implementation::App::OnTrayIconRightClick() {
-    DebugTrace(L"[App] OnTrayIconRightClick()");
-    if (!m_contextMenu) {
-        DebugTrace(L"[App] ERROR: m_contextMenu is null");
-        return;
-    }
-
-    POINT pt{};
-    GetCursorPos(&pt);
-
-    // MenuFlyout.ShowAt expects coordinates relative to the anchor element.
-    // Since the window is off-screen we must convert Screen -> Client.
-    ScreenToClient(m_hwnd, &pt);
-
-    auto dpi = GetDpiForWindow(m_hwnd);
-    if (dpi == 0) dpi = USER_DEFAULT_SCREEN_DPI;
-
-    SetForegroundWindow(m_hwnd);
-
-    winrt::Windows::Foundation::Point point(
-        static_cast<float>(pt.x) * USER_DEFAULT_SCREEN_DPI / static_cast<float>(dpi),
-        static_cast<float>(pt.y) * USER_DEFAULT_SCREEN_DPI / static_cast<float>(dpi));
-
-    DebugTrace(L"[App] ContextMenu showing at ({0}, {1}) with DPI={2}", point.X, point.Y, dpi);
-
-    SetWindowPos(m_hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-    m_contextMenu->ShowAt(point);
-}
-
-void winrt::AudioPlaybackConnector2::implementation::App::OnTrayIconMessage([[maybe_unused]] WPARAM wParam, LPARAM lParam) {
-    auto loword = LOWORD(lParam);
-
-    constexpr ULONGLONG c_clickDebounceMs = 200;
-    static ULONGLONG s_lastLeftClickTick = 0;
-    static ULONGLONG s_lastRightClickTick = 0;
-
-    auto shouldProcess = [](ULONGLONG& lastTick, ULONGLONG debounceMs) {
-        auto now = GetTickCount64();
-        if (now - lastTick < debounceMs) {
-            return false;
-        }
-        lastTick = now;
-        return true;
-    };
-
-    switch (loword) {
-        case WM_LBUTTONUP:
-        case NIN_SELECT:
-        case NIN_KEYSELECT:
-            if (shouldProcess(s_lastLeftClickTick, c_clickDebounceMs)) {
-                OnTrayIconLeftClick();
-            }
-            break;
-
-        // Prefer WM_CONTEXTMENU for right-click to avoid duplicate handling with WM_RBUTTONUP.
-        case WM_CONTEXTMENU:
-            if (shouldProcess(s_lastRightClickTick, c_clickDebounceMs)) {
-                OnTrayIconRightClick();
-            }
-            break;
-
-        case WM_RBUTTONUP:
-        case WM_LBUTTONDOWN:
-        case WM_RBUTTONDOWN:
-        case WM_MOUSEMOVE:
-        case NIN_BALLOONSHOW:
-        case NIN_BALLOONHIDE:
-        case NIN_BALLOONTIMEOUT:
-        case NIN_BALLOONUSERCLICK:
-            // Expected shell notifications/noise.
-            break;
-
-        default:
-            DebugTrace(L"[App] Unhandled tray message: 0x{0:X}", loword);
-            break;
-    }
-}
-
 /*------------------------------------------------------------------------------------------------------------------*/
 /*//////// Device Event Handlers ////////////////////////////////////////////////////////////////////////////////*/
 /*------------------------------------------------------------------------------------------------------------------*/
 
 void winrt::AudioPlaybackConnector2::implementation::App::OnDeviceConnected(winrt::hstring const& id) {
-    if (m_exiting.load() || !m_settings || !m_deviceManager) return;
+    if (m_exiting.load() || !m_settings || !m_deviceManager || !m_notificationService || !m_trayController) return;
     DebugTrace(L"[App] OnDeviceConnected: {0}", std::wstring(id));
 
     // Resolve device name before acquiring the settings lock to avoid lock ordering issues.
@@ -1118,44 +518,44 @@ void winrt::AudioPlaybackConnector2::implementation::App::OnDeviceConnected(winr
         m_deviceManager->SetAutoReconnect(id, autoReconnect);
     }
 
-    ShowDeviceConnectedNotification(id, deviceName);
+    m_notificationService->ShowDeviceConnected(id, deviceName);
 
-    UpdateTrayTooltip();
+    m_trayController->UpdateTooltipFromConnections();
 }
 
 void winrt::AudioPlaybackConnector2::implementation::App::OnDeviceDisconnected(winrt::hstring const& id) {
-    if (m_exiting.load() || !m_settings) return;
+    if (m_exiting.load() || !m_settings || !m_notificationService || !m_trayController) return;
     DebugTrace(L"[App] OnDeviceDisconnected: {0}", std::wstring(id));
 
     winrt::hstring deviceName = ResolveKnownDeviceName(id);
-    ShowDeviceDisconnectedNotification(id, deviceName);
+    m_notificationService->ShowDeviceDisconnected(id, deviceName);
 
-    UpdateTrayTooltip();
+    m_trayController->UpdateTooltipFromConnections();
 }
 
 void winrt::AudioPlaybackConnector2::implementation::App::OnConnectionError(winrt::hstring const& id, winrt::hstring msg) {
     if (m_exiting.load()) return;
     DebugTrace(L"[App] OnConnectionError: {0} - {1}", std::wstring(id), std::wstring(msg));
-    if (m_trayIcon) {
+    if (m_trayController) {
         std::wstring tip = std::wstring(_("AppName")) + L"\n" + msg.c_str();
-        m_trayIcon->SetTooltip(tip);
+        m_trayController->UpdateTooltip(tip);
     }
 }
 
 void winrt::AudioPlaybackConnector2::implementation::App::OnAutoReconnectTriggered(winrt::hstring const& id) {
-    if (m_exiting.load() || !m_settings) return;
+    if (m_exiting.load() || !m_settings || !m_notificationService) return;
     DebugTrace(L"[App] OnAutoReconnectTriggered: {0}", std::wstring(id));
 
     winrt::hstring deviceName = ResolveKnownDeviceName(id);
-    ShowAutoReconnectNotification(id, deviceName);
+    m_notificationService->ShowAutoReconnect(id, deviceName);
 }
 
 void winrt::AudioPlaybackConnector2::implementation::App::OnAutoReconnectFailed(winrt::hstring const& id) {
-    if (m_exiting.load() || !m_settings) return;
+    if (m_exiting.load() || !m_settings || !m_notificationService) return;
     DebugTrace(L"[App] OnAutoReconnectFailed: {0}", std::wstring(id));
 
     winrt::hstring deviceName = ResolveKnownDeviceName(id);
-    ShowAutoReconnectFailedNotification(id, deviceName);
+    m_notificationService->ShowAutoReconnectFailed(id, deviceName);
 }
 
 /*------------------------------------------------------------------------------------------------------------------*/
@@ -1166,8 +566,8 @@ LRESULT CALLBACK winrt::AudioPlaybackConnector2::implementation::App::SubclassPr
     auto* app = reinterpret_cast<App*>(dwRefData);
     if (!app) return DefSubclassProc(hwnd, msg, wParam, lParam);
 
-    if (msg == app->m_trayCallbackMsg) {
-        app->OnTrayIconMessage(wParam, lParam);
+    if (app->m_trayController && msg == app->m_trayController->TrayCallbackMessage()) {
+        app->m_trayController->HandleTrayMessage(wParam, lParam);
         return 0;
     }
 
@@ -1176,15 +576,15 @@ LRESULT CALLBACK winrt::AudioPlaybackConnector2::implementation::App::SubclassPr
         return 0;
     }
 
-    if (msg == WM_TIMER && wParam == c_timerAnimation && app->m_trayIcon) {
-        app->m_trayIcon->ToggleConnectingFrame();
+    if (msg == WM_TIMER && wParam == c_timerAnimation && app->m_trayController) {
+        app->m_trayController->ToggleConnectingFrame();
         return 0;
     }
 
     if (s_wmTaskbarCreated && msg == s_wmTaskbarCreated) {
-        if (app->m_trayIcon) {
-            app->m_trayIcon->Reregister();
-            app->m_trayIcon->UpdateTheme();
+        if (app->m_trayController) {
+            app->m_trayController->Reregister();
+            app->m_trayController->OnThemeChanged();
         }
         return 0;
     }

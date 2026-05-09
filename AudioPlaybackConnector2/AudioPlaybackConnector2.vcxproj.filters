@@ -35,6 +35,12 @@
     <ClCompile Include="src\core\DeviceManager.cpp">
       <Filter>src\core</Filter>
     </ClCompile>
+    <ClCompile Include="src\services\NotificationService.cpp">
+      <Filter>src\services</Filter>
+    </ClCompile>
+    <ClCompile Include="src\services\TrayController.cpp">
+      <Filter>src\services</Filter>
+    </ClCompile>
     <ClCompile Include="src\ui\TrayIcon.cpp">
       <Filter>src\ui</Filter>
     </ClCompile>
@@ -72,6 +78,12 @@
     </ClInclude>
     <ClInclude Include="include\core\DeviceManager.hpp">
       <Filter>include\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\services\NotificationService.hpp">
+      <Filter>include\services</Filter>
+    </ClInclude>
+    <ClInclude Include="include\services\TrayController.hpp">
+      <Filter>include\services</Filter>
     </ClInclude>
     <ClInclude Include="include\ui\TrayIcon.hpp">
       <Filter>include\ui</Filter>
@@ -116,6 +128,9 @@
     <Filter Include="src\core">
       <UniqueIdentifier>{a1b2c3d4-e5f6-7890-abcd-ef1234567891}</UniqueIdentifier>
     </Filter>
+    <Filter Include="src\services">
+      <UniqueIdentifier>{a1b2c3d4-e5f6-7890-abcd-ef1234567894}</UniqueIdentifier>
+    </Filter>
     <Filter Include="src\ui">
       <UniqueIdentifier>{a1b2c3d4-e5f6-7890-abcd-ef1234567892}</UniqueIdentifier>
     </Filter>
@@ -124,6 +139,9 @@
     </Filter>
     <Filter Include="include\core">
       <UniqueIdentifier>{b2c3d4e5-f6a7-8901-bcde-f12345678902}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="include\services">
+      <UniqueIdentifier>{b2c3d4e5-f6a7-8901-bcde-f12345678905}</UniqueIdentifier>
     </Filter>
     <Filter Include="include\ui">
       <UniqueIdentifier>{b2c3d4e5-f6a7-8901-bcde-f12345678903}</UniqueIdentifier>

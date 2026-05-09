@@ -14,6 +14,7 @@
 #include <gdiplus.h>
 #include <versionhelpers.h>
 #include <mmdeviceapi.h>
+#include <appmodel.h>
 
 #include <cstdlib>
 #include <cstdint>
@@ -74,6 +75,7 @@
 #include <winrt/Microsoft.UI.Xaml.Hosting.h>
 #include <winrt/Microsoft.UI.Dispatching.h>
 #include <winrt/Microsoft.UI.Windowing.h>
+#include <winrt/Microsoft.Windows.AppNotifications.h>
 
 #include <microsoft.ui.xaml.window.h>
 
