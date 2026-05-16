@@ -27,6 +27,8 @@
 #include <functional>
 #include <filesystem>
 #include <mutex>
+#include <condition_variable>
+#include <queue>
 #include <thread>
 #include <algorithm>
 #include <format>
@@ -82,3 +84,5 @@
 
 #include "winrt/Windows.UI.Xaml.h"
 #include "winrt/Windows.UI.Xaml.Interop.h"
+
+#include <util/Logger.hpp>

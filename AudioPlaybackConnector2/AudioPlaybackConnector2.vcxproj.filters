@@ -64,6 +64,9 @@
     <ClInclude Include="include\pch.h">
       <Filter>include</Filter>
     </ClInclude>
+    <ClInclude Include="include\util\Logger.hpp">
+      <Filter>include\util</Filter>
+    </ClInclude>
     <ClInclude Include="include\util\Util.hpp">
       <Filter>include\util</Filter>
     </ClInclude>
