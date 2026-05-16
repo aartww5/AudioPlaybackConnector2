@@ -473,6 +473,14 @@ void DeviceManager::Disconnect(winrt::hstring deviceId, DisconnectReason reason)
     LogConnectionSnapshot(winrt::hstring(L"disconnect:") + winrt::hstring(reasonName(reason)));
 }
 
+void DeviceManager::ReportConnectionFailure(winrt::hstring const& deviceId, winrt::hstring const& message, bool cleanupConnection) {
+    ConnectionError(deviceId, message);
+    if (cleanupConnection) {
+        Disconnect(deviceId, DisconnectReason::Cleanup);
+    }
+    DeviceStatusChanged(deviceId, message, winrt::Windows::Devices::Enumeration::DevicePickerDisplayStatusOptions::ShowRetryButton);
+}
+
 winrt::Windows::Foundation::IAsyncAction DeviceManager::ConnectInternalAsync(winrt::Windows::Devices::Enumeration::DeviceInformation device) {
     auto lifetime = shared_from_this();
     auto deviceId = device.Id();
@@ -494,8 +502,7 @@ winrt::Windows::Foundation::IAsyncAction DeviceManager::ConnectInternalAsync(win
             // Do NOT touch m_reconnectingIds here – ReconnectAsync owns that flag
             // for the entire reconnect flow and will clear it when finished.
             DebugTrace(L"[DeviceManager] TryCreateFromId returned null: {0}", std::wstring(deviceId));
-            ConnectionError(deviceId, winrt::hstring(_("UnknownError")));
-            DeviceStatusChanged(deviceId, winrt::hstring(_("UnknownError")), winrt::Windows::Devices::Enumeration::DevicePickerDisplayStatusOptions::ShowRetryButton);
+            ReportConnectionFailure(deviceId, winrt::hstring(_("UnknownError")), false);
             co_return;
         }
 
@@ -586,34 +593,23 @@ winrt::Windows::Foundation::IAsyncAction DeviceManager::ConnectInternalAsync(win
                 break;
             }
             case winrt::Windows::Media::Audio::AudioPlaybackConnectionOpenResultStatus::RequestTimedOut:
-                ConnectionError(deviceId, winrt::hstring(_("RequestTimedOut")));
-                Disconnect(deviceId, DisconnectReason::Cleanup);
-                DeviceStatusChanged(deviceId, winrt::hstring(_("RequestTimedOut")), winrt::Windows::Devices::Enumeration::DevicePickerDisplayStatusOptions::ShowRetryButton);
+                ReportConnectionFailure(deviceId, winrt::hstring(_("RequestTimedOut")), true);
                 break;
             case winrt::Windows::Media::Audio::AudioPlaybackConnectionOpenResultStatus::DeniedBySystem:
-                ConnectionError(deviceId, winrt::hstring(_("DeniedBySystem")));
-                Disconnect(deviceId, DisconnectReason::Cleanup);
-                DeviceStatusChanged(deviceId, winrt::hstring(_("DeniedBySystem")), winrt::Windows::Devices::Enumeration::DevicePickerDisplayStatusOptions::ShowRetryButton);
+                ReportConnectionFailure(deviceId, winrt::hstring(_("DeniedBySystem")), true);
                 break;
             case winrt::Windows::Media::Audio::AudioPlaybackConnectionOpenResultStatus::UnknownFailure: {
                 winrt::hresult_error err(result.ExtendedError(), winrt::take_ownership_from_abi);
-                ConnectionError(deviceId, err.message());
-                Disconnect(deviceId, DisconnectReason::Cleanup);
-                DeviceStatusChanged(deviceId, err.message(), winrt::Windows::Devices::Enumeration::DevicePickerDisplayStatusOptions::ShowRetryButton);
+                ReportConnectionFailure(deviceId, err.message(), true);
                 break;
             }
         }
     } catch (winrt::hresult_error const& ex) {
         if (!IsConnectAttemptCurrent(deviceId, attemptId)) co_return;
-        ConnectionError(deviceId, ex.message());
-        Disconnect(deviceId, DisconnectReason::Cleanup);
-        DeviceStatusChanged(deviceId, ex.message(), winrt::Windows::Devices::Enumeration::DevicePickerDisplayStatusOptions::ShowRetryButton);
+        ReportConnectionFailure(deviceId, ex.message(), true);
     } catch (...) {
         if (!IsConnectAttemptCurrent(deviceId, attemptId)) co_return;
-        auto message = winrt::hstring(_("UnknownError"));
-        ConnectionError(deviceId, message);
-        Disconnect(deviceId, DisconnectReason::Cleanup);
-        DeviceStatusChanged(deviceId, message, winrt::Windows::Devices::Enumeration::DevicePickerDisplayStatusOptions::ShowRetryButton);
+        ReportConnectionFailure(deviceId, winrt::hstring(_("UnknownError")), true);
     }
 }
 

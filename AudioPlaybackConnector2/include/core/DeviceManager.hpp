@@ -70,6 +70,7 @@ private:
                                   Unexpected,
                                   Cleanup };
 
+    void ReportConnectionFailure(winrt::hstring const& deviceId, winrt::hstring const& message, bool cleanupConnection);
     void Disconnect(winrt::hstring deviceId, DisconnectReason reason);
     bool IsConnectAttemptCurrent(winrt::hstring const& deviceId, std::size_t attemptId) const;
     void OnConnectionStateChanged(winrt::Windows::Media::Audio::AudioPlaybackConnection sender, winrt::Windows::Foundation::IInspectable);
