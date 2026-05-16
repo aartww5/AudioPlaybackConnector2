@@ -92,15 +92,23 @@ jobs:
         body: |
           See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for what's new.
 
+          **Runtime dependencies:** Install these once before launching the MSIX package:
+
+          1. [WinAppRuntime.Singleton](https://apps.microsoft.com/detail/9p5z076k079h)
+          2. [Windows App SDK 2.0 runtime](https://learn.microsoft.com/en-us/windows/apps/windows-app-sdk/downloads#windows-app-sdk-20)
+
+          If launch fails with `DEP0840` and mentions `MicrosoftCorporationII.WinAppRuntime.Main.2` or `MicrosoftCorporationII.WinAppRuntime.Singleton`, reinstall the runtime dependencies above.
+
           **Installation:** Download both the `.cer` and `.msix` files from the assets below.
 
-          1. Install the certificate:
+          1. Install the runtime dependencies listed above.
+          2. Install the certificate:
              ```powershell
              Import-Certificate -FilePath ".\AudioPlaybackConnector2.cer" -CertStoreLocation "Cert:\LocalMachine\Root"
              ```
-          2. Install the MSIX package:
+          3. Install the MSIX package:
              ```powershell
-             Add-AppxPackage -Path ".\AudioPlaybackConnector2.msix"
+             Add-AppxPackage -Path ".\${{ steps.msix.outputs.NAME }}"
              ```
 
           > Releases are signed with a self-signed certificate. A free open-source code-signing certificate has been requested but approval may take some time.

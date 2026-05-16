@@ -46,8 +46,23 @@ Inspired by the original [AudioPlaybackConnector](https://github.com/ysc3839/Aud
 - Windows 10 version 1809 / build 17763 or later
 - Windows 11 supported
 - Bluetooth adapter with A2DP support
+- Windows App SDK Runtime 2.0.1 or later
+- Microsoft Windows App Runtime Singleton
 - MSIX packaged installation
 - `runFullTrust` capability
+
+---
+
+## Windows App SDK Runtime
+
+AudioPlaybackConnector2 currently uses **Windows App SDK Runtime 2.0.1** and **WinUI 2.0.12**.
+
+If launching the installed MSIX package or running the packaging project from Visual Studio fails with `DEP0840` and mentions missing `MicrosoftCorporationII.WinAppRuntime.Main.2` or `MicrosoftCorporationII.WinAppRuntime.Singleton` packages, install these runtime dependencies once:
+
+1. Install [WinAppRuntime.Singleton](https://apps.microsoft.com/detail/9p5z076k079h) from Microsoft Store.
+2. Install the [Windows App SDK 2.0 runtime](https://learn.microsoft.com/en-us/windows/apps/windows-app-sdk/downloads#windows-app-sdk-20).
+
+After both runtime components are installed, install or launch AudioPlaybackConnector2 again.
 
 ---
 
@@ -59,8 +74,9 @@ There are exactly two supported ways to install and use AudioPlaybackConnector2.
 
 1. Open `AudioPlaybackConnector2.slnx` in Visual Studio 2022.
 2. Select `Release | x64`.
-3. Build the solution or the packaging project.
-4. Run the app directly from the build output or install the generated MSIX locally.
+3. Make sure the Windows App SDK runtime dependencies listed above are installed.
+4. Build the solution or the packaging project.
+5. Run the app directly from the build output or install the generated MSIX locally.
 
 Local builds use a temporary developer certificate, so no manual certificate installation is required.
 
@@ -68,7 +84,11 @@ Local builds use a temporary developer certificate, so no manual certificate ins
 
 Each GitHub Release contains two files: a `.cer` certificate and a `.msix` package.
 
-**Step 1 — Install the certificate**
+**Step 1 — Install the Windows App SDK runtime dependencies**
+
+Install [WinAppRuntime.Singleton](https://apps.microsoft.com/detail/9p5z076k079h), then install the [Windows App SDK 2.0 runtime](https://learn.microsoft.com/en-us/windows/apps/windows-app-sdk/downloads#windows-app-sdk-20).
+
+**Step 2 — Install the certificate**
 
 Right-click the `.cer` file and select **Install Certificate**, or run PowerShell as Administrator:
 
@@ -78,7 +98,7 @@ Import-Certificate -FilePath ".\AudioPlaybackConnector2.cer" -CertStoreLocation 
 
 > **Note:** If you prefer to trust the certificate only for your user account, use `Cert:\CurrentUser\TrustedPeople` instead of `Cert:\LocalMachine\Root`.
 
-**Step 2 — Install the MSIX package**
+**Step 3 — Install the MSIX package**
 
 ```powershell
 Add-AppxPackage -Path ".\AudioPlaybackConnector2.msix"
@@ -162,9 +182,13 @@ The icon is rendered programmatically and adapts to light and dark Windows taskb
 
 - Visual Studio 2022 (17.14+ recommended)
 - Desktop development with C++
-- Windows App SDK
+- Windows application development workload for WinUI / Windows App SDK
+- Windows App SDK Runtime 2.0.1 or later
+- Microsoft Windows App Runtime Singleton
 - Windows SDK 10.0.26100.0 or later
 - NuGet package restore enabled
+
+> **Visual Studio 2026 note:** If the project does not compile because C++23 language features are unavailable, set the C++ language standard to `/std:c++latest`. If the packaging project fails because the certificate thumbprint is not valid on your machine, open `Package.appxmanifest`, go to **Packaging**, choose or create a local test certificate, then update `PackageCertificateThumbprint` in `AudioPlaybackConnector2 (Package)`.
 
 ### Build in Visual Studio
 
