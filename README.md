@@ -15,7 +15,7 @@
 
 AudioPlaybackConnector2 is a Windows system-tray application for connecting Bluetooth audio devices as A2DP audio sinks using the Win32 `AudioPlaybackConnection` API.
 
-<img width="600" alt="AudioPlaybackConnector2 device picker" src="https://github.com/user-attachments/assets/8eba7e86-4e53-46c8-b495-44aef7599460" />
+<img width="600" alt="AudioPlaybackConnector2 device picker" src="https://github.com/user-attachments/assets/e0e2724a-82d3-40e7-849c-e6a870c0eeca" />
 
 The app is built with **WinUI 3 Desktop**, **C++/WinRT**, and packaged as an **MSIX**.
 
