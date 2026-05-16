@@ -27,6 +27,8 @@ void TrayController::Initialize(HWND hwnd, winrt::Microsoft::UI::Xaml::Window ma
     m_isTearingDown = false;
     m_hwnd = hwnd;
     m_mainWindow = mainWindow;
+    m_lastLeftClickTick = 0;
+    m_lastRightClickTick = 0;
 
     m_trayIcon = std::make_unique<TrayIcon>();
     m_trayIcon->Initialize(m_hwnd, m_trayCallbackMsg);
@@ -72,6 +74,8 @@ void TrayController::Teardown() noexcept {
     m_pickerFlyout = nullptr;
     m_hwnd = nullptr;
     m_devicePickerPreloaded = false;
+    m_lastLeftClickTick = 0;
+    m_lastRightClickTick = 0;
 }
 
 /*------------------------------------------------------------------------------------------------------------------*/
@@ -224,8 +228,6 @@ void TrayController::HandleTrayMessage([[maybe_unused]] WPARAM wParam, LPARAM lP
     auto loword = LOWORD(lParam);
 
     constexpr ULONGLONG c_clickDebounceMs = 200;
-    static ULONGLONG s_lastLeftClickTick = 0;
-    static ULONGLONG s_lastRightClickTick = 0;
 
     auto shouldProcess = [](ULONGLONG& lastTick, ULONGLONG debounceMs) {
         auto now = GetTickCount64();
@@ -240,13 +242,13 @@ void TrayController::HandleTrayMessage([[maybe_unused]] WPARAM wParam, LPARAM lP
         case WM_LBUTTONUP:
         case NIN_SELECT:
         case NIN_KEYSELECT:
-            if (shouldProcess(s_lastLeftClickTick, c_clickDebounceMs)) {
+            if (shouldProcess(m_lastLeftClickTick, c_clickDebounceMs)) {
                 ShowDevicePicker();
             }
             break;
 
         case WM_CONTEXTMENU:
-            if (shouldProcess(s_lastRightClickTick, c_clickDebounceMs)) {
+            if (shouldProcess(m_lastRightClickTick, c_clickDebounceMs)) {
                 ShowTrayMenu();
             }
             break;

@@ -380,7 +380,6 @@ void DeviceManager::Disconnect(winrt::hstring deviceId, DisconnectReason reason)
     auto reasonName = [](DisconnectReason value) -> std::wstring_view {
         switch (value) {
             case DisconnectReason::UserInitiated: return L"UserInitiated";
-            case DisconnectReason::Reconnect: return L"Reconnect";
             case DisconnectReason::Unexpected: return L"Unexpected";
             case DisconnectReason::Cleanup: return L"Cleanup";
             default: return L"UnknownReason";

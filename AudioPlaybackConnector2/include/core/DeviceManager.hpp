@@ -67,7 +67,6 @@ private:
 
     winrt::Windows::Foundation::IAsyncAction ConnectInternalAsync(winrt::Windows::Devices::Enumeration::DeviceInformation device);
     enum class DisconnectReason { UserInitiated,
-                                  Reconnect,
                                   Unexpected,
                                   Cleanup };
 

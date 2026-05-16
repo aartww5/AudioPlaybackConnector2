@@ -92,6 +92,8 @@ private:
 
     UINT m_trayCallbackMsg = WM_APP + 1;
     std::size_t m_themeChangedToken = 0;
+    ULONGLONG m_lastLeftClickTick = 0;
+    ULONGLONG m_lastRightClickTick = 0;
     bool m_devicePickerPreloaded = false;
     bool m_isTearingDown = false;
 };
