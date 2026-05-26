@@ -40,20 +40,57 @@ inline std::wstring GetTempDirectory() {
     return path;
 }
 
+inline bool EnsureDirectory(std::filesystem::path const& path) {
+    if (path.empty()) return false;
+    std::error_code ec;
+    std::filesystem::create_directories(path, ec);
+    return !ec;
+}
+
+inline std::optional<std::wstring> TryGetCurrentPackageFullName() {
+    UINT32 length = 0;
+    LONG status = ::GetCurrentPackageFullName(&length, nullptr);
+    if (status != ERROR_INSUFFICIENT_BUFFER || length <= 1) {
+        return std::nullopt;
+    }
+
+    std::wstring fullName(length, L'\0');
+    status = ::GetCurrentPackageFullName(&length, fullName.data());
+    if (status != ERROR_SUCCESS || length <= 1) {
+        return std::nullopt;
+    }
+
+    fullName.resize(length - 1);
+    return fullName;
+}
+
+inline std::filesystem::path ResolvePackageLocalDirectory(std::wstring_view localAppDataRoot) {
+    if (localAppDataRoot.empty()) return {};
+    auto packageFullName = TryGetCurrentPackageFullName();
+    if (!packageFullName || packageFullName->empty()) return {};
+    return std::filesystem::path(localAppDataRoot) / L"Packages" / *packageFullName / L"LocalCache" / L"Local" / L"AudioPlaybackConnector2";
+}
+
 inline std::filesystem::path ResolveLogPath() noexcept {
     try {
-        auto base = GetEnvironmentVariableValue(L"LOCALAPPDATA");
-        if (base.empty()) {
-            base = GetTempDirectory();
-        }
-        if (base.empty()) return {};
+        auto localAppData = GetEnvironmentVariableValue(L"LOCALAPPDATA");
+        if (!localAppData.empty()) {
+            auto packageDir = ResolvePackageLocalDirectory(localAppData);
+            if (!packageDir.empty() && EnsureDirectory(packageDir)) {
+                return packageDir / L"AudioPlaybackConnector2.log";
+            }
 
-        auto dir = std::filesystem::path(base) / L"AudioPlaybackConnector2";
-        if (!CreateDirectoryW(dir.c_str(), nullptr) && GetLastError() != ERROR_ALREADY_EXISTS) {
-            return {};
+            auto defaultDir = std::filesystem::path(localAppData) / L"AudioPlaybackConnector2";
+            if (EnsureDirectory(defaultDir)) {
+                return defaultDir / L"AudioPlaybackConnector2.log";
+            }
         }
 
-        return dir / L"AudioPlaybackConnector2.log";
+        auto tempDirectory = GetTempDirectory();
+        if (tempDirectory.empty()) return {};
+        auto tempLogDir = std::filesystem::path(tempDirectory) / L"AudioPlaybackConnector2";
+        if (!EnsureDirectory(tempLogDir)) return {};
+        return tempLogDir / L"AudioPlaybackConnector2.log";
     } catch (...) {
         return {};
     }

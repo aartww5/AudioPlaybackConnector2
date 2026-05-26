@@ -48,5 +48,7 @@
   "Settings_AutoReconnect_Desc": "마지막으로 사용한 장치에 자동으로 다시 연결합니다.",
   "Settings_StartWithWindows_Desc": "로그인 후 트레이 앱을 자동으로 시작합니다.",
   "Settings_PairedDevice": "페어링된 장치",
-  "Settings_NoDevices": "페어링된 장치 없음"
+  "Settings_NoDevices": "페어링된 장치 없음",
+  "CrashDialogTitle": "AudioPlaybackConnector2 crashed",
+  "CrashDialogBody": "AudioPlaybackConnector2 crashed unexpectedly.\n\nError code: 0x{0:08X}\nCrash report: {1}\nMinidump: {2}\n\nYes = Open prefilled GitHub issue\nNo = Open crash folder\nCancel = Close"
 }

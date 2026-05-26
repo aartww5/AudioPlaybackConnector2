@@ -10,6 +10,7 @@
 #include <core/Settings.hpp>
 #include <core/ThemeHelper.hpp>
 #include <core/StringResources.hpp>
+#include <util/CrashHandler.hpp>
 #include <util/Util.hpp>
 
 #include <utility>
@@ -38,11 +39,12 @@ std::atomic<App*> App::s_instance = nullptr;
 } // namespace winrt::AudioPlaybackConnector2::implementation
 
 /*------------------------------------------------------------------------------------------------------------------*/
-/*//////// Constructors / Destructor ////////////////////////////////////////////////////////////////////////////*/
+/*//////// Constructors / Destructor ///////////////////////////////////////////////////////////////////////////////*/
 /*------------------------------------------------------------------------------------------------------------------*/
 
 winrt::AudioPlaybackConnector2::implementation::App::App() {
     s_instance.store(this);
+    util::crash::InstallCrashHandlers();
 }
 
 winrt::AudioPlaybackConnector2::implementation::App::~App() {
@@ -78,7 +80,7 @@ winrt::AudioPlaybackConnector2::implementation::App::~App() {
 }
 
 /*------------------------------------------------------------------------------------------------------------------*/
-/*//////// Application Launch ///////////////////////////////////////////////////////////////////////////////////*/
+/*//////// Application Launch //////////////////////////////////////////////////////////////////////////////////////*/
 /*------------------------------------------------------------------------------------------------------------------*/
 
 void winrt::AudioPlaybackConnector2::implementation::App::OnLaunched([[maybe_unused]] LaunchActivatedEventArgs const& e) {

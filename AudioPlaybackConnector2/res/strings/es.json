@@ -48,5 +48,7 @@
   "Settings_AutoReconnect_Desc": "Se reconecta automáticamente al último dispositivo utilizado.",
   "Settings_StartWithWindows_Desc": "Inicia la aplicación de la bandeja automáticamente después del inicio de sesión.",
   "Settings_PairedDevice": "Dispositivo emparejado",
-  "Settings_NoDevices": "No hay dispositivos emparejados"
+  "Settings_NoDevices": "No hay dispositivos emparejados",
+  "CrashDialogTitle": "AudioPlaybackConnector2 crashed",
+  "CrashDialogBody": "AudioPlaybackConnector2 crashed unexpectedly.\n\nError code: 0x{0:08X}\nCrash report: {1}\nMinidump: {2}\n\nYes = Open prefilled GitHub issue\nNo = Open crash folder\nCancel = Close"
 }

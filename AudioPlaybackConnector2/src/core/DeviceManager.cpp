@@ -551,7 +551,7 @@ void DeviceManager::LogConnectionSnapshot(winrt::hstring const& reason) const {
     struct Snapshot {
         winrt::hstring Id;
         winrt::hstring Name;
-        winrt::Windows::Media::Audio::AudioPlaybackConnection Connection{nullptr};
+        bool HasConnection = false;
         bool IsOpen = false;
         bool AutoReconnect = false;
         bool Disconnecting = false;
@@ -578,7 +578,7 @@ void DeviceManager::LogConnectionSnapshot(winrt::hstring const& reason) const {
                 } catch (...) {
                 }
             }
-            snapshot.Connection = info.Connection;
+            snapshot.HasConnection = static_cast<bool>(info.Connection);
             snapshot.IsOpen = info.IsOpen;
             snapshot.AutoReconnect = info.AutoReconnect;
             snapshot.Disconnecting = m_disconnectingIds.count(id) > 0;
@@ -602,14 +602,11 @@ void DeviceManager::LogConnectionSnapshot(winrt::hstring const& reason) const {
 
     for (auto const& snapshot : snapshots) {
         std::wstring state = L"<null>";
-        try {
-            if (snapshot.Connection) {
-                state = std::wstring(ConnectionStateName(snapshot.Connection.State()));
-            }
-        } catch (winrt::hresult_error const& ex) {
-            state = std::format(L"StateError(0x{:08X} {})", static_cast<uint32_t>(ex.code()), std::wstring(ex.message()));
-        } catch (...) {
-            state = L"StateError(unknown)";
+        if (snapshot.HasConnection) {
+            // Avoid calling Connection.State() from the heartbeat timer thread.
+            // We log the cached open-state instead to reduce cross-apartment
+            // WinRT calls in diagnostics-only code.
+            state = snapshot.IsOpen ? L"Opened(cached)" : L"Closed(cached)";
         }
 
         DebugTrace(L"[DeviceManager] Snapshot device id={0} name={1} isOpen={2} state={3} autoReconnect={4} disconnecting={5} reconnecting={6} cancelledReconnect={7} reconnectAttempts={8} connectAttemptId={9}",
@@ -919,7 +916,7 @@ winrt::Windows::Foundation::IAsyncAction DeviceManager::ConnectInternalAsync(win
                 ReportConnectionFailure(deviceId, winrt::hstring(_("DeniedBySystem")), true);
                 break;
             case winrt::Windows::Media::Audio::AudioPlaybackConnectionOpenResultStatus::UnknownFailure: {
-                winrt::hresult_error err(result.ExtendedError(), winrt::take_ownership_from_abi);
+                winrt::hresult_error err(result.ExtendedError());
                 ReportConnectionFailure(deviceId, err.message(), true);
                 break;
             }

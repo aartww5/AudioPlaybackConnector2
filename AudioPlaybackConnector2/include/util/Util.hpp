@@ -35,7 +35,8 @@ public:
 
     template <typename... CallArgs>
     void operator()(CallArgs&&... args) const {
-        auto snapshot = std::make_tuple(std::decay_t<CallArgs>(std::forward<CallArgs>(args))...);
+        static_assert(sizeof...(CallArgs) == sizeof...(Args), "Event argument count mismatch");
+        auto snapshot = std::tuple<std::decay_t<Args>...>(std::forward<CallArgs>(args)...);
         std::vector<std::shared_ptr<Handler>> copy;
         {
             auto guard = m_lock.lock_shared();
