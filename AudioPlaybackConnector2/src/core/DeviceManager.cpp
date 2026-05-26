@@ -267,6 +267,7 @@ void DeviceManager::SetAutoReconnectPredicate(AutoReconnectPredicate pred) {
 
 winrt::Windows::Foundation::IAsyncAction DeviceManager::ConnectAsync(winrt::hstring deviceId) {
     auto lifetime = shared_from_this();
+    const std::wstring deviceIdKey = std::wstring(deviceId);
     try {
         {
             auto guard = m_lock.lock_exclusive();
@@ -291,7 +292,7 @@ winrt::Windows::Foundation::IAsyncAction DeviceManager::ConnectAsync(winrt::hstr
         bool knownDeviceId = false;
         {
             auto guard = m_lock.lock_shared();
-            knownDeviceId = m_deviceCache.count(deviceId) > 0;
+            knownDeviceId = m_deviceCache.count(deviceIdKey) > 0;
         }
 
         auto selector = winrt::Windows::Media::Audio::AudioPlaybackConnection::GetDeviceSelector();
@@ -314,10 +315,10 @@ winrt::Windows::Foundation::IAsyncAction DeviceManager::ConnectAsync(winrt::hstr
 
         // Refresh cache using IDs only.
         {
-            std::unordered_set<winrt::hstring> refreshed;
+            std::unordered_set<std::wstring> refreshed;
             refreshed.reserve(static_cast<size_t>(devices.Size()));
             for (auto const& device : devices) {
-                refreshed.insert(device.Id());
+                refreshed.insert(std::wstring(device.Id()));
             }
             auto guard = m_lock.lock_exclusive();
             m_deviceCache = std::move(refreshed);
@@ -1058,7 +1059,7 @@ void DeviceManager::OnDeviceAdded(winrt::Windows::Devices::Enumeration::DeviceWa
         auto guard = m_lock.lock_exclusive();
         if (m_shutdownForProcessExit) return;
         if (m_watcherStopping) return;
-        m_deviceCache.insert(args.Id());
+        m_deviceCache.insert(std::wstring(args.Id()));
         pred = m_autoReconnectPred;
     }
 
@@ -1075,7 +1076,7 @@ void DeviceManager::OnDeviceRemoved(winrt::Windows::Devices::Enumeration::Device
         if (m_shutdownForProcessExit) return;
         if (m_watcherStopping) return;
 
-        m_deviceCache.erase(args.Id());
+        m_deviceCache.erase(std::wstring(args.Id()));
 
         connectedDeviceRemoved =
             m_connections.count(args.Id()) > 0 &&

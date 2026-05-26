@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string>
 #include <unordered_set>
 #include <util/Util.hpp>
 
@@ -95,7 +96,7 @@ private:
     std::unordered_set<winrt::hstring> m_reconnectingIds;
     std::unordered_set<winrt::hstring> m_connectingIds;
     std::vector<winrt::Windows::Media::Audio::AudioPlaybackConnection> m_zombieConnections;
-    std::unordered_set<winrt::hstring> m_deviceCache;
+    std::unordered_set<std::wstring> m_deviceCache;
     AutoReconnectPredicate m_autoReconnectPred;
     std::unordered_set<winrt::hstring> m_cancelledReconnectIds;
     std::unordered_map<winrt::hstring, std::size_t> m_reconnectTimerCounts;
