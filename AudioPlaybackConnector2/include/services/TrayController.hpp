@@ -22,6 +22,7 @@ public:
     using ShowSettingsCallback = std::move_only_function<void()>;
     using ExitCallback = std::move_only_function<void()>;
     using DeviceActionCallback = std::move_only_function<void(winrt::hstring)>;
+    using ToggleDeviceCallback = std::move_only_function<void()>;
 
     /* Lifecycle */
     /*------------------------------------------------------------------------------------------------------------------*/
@@ -42,7 +43,7 @@ public:
     /* Callbacks */
     /*------------------------------------------------------------------------------------------------------------------*/
 
-    void SetCallbacks(ShowSettingsCallback showSettings, ExitCallback exit, DeviceActionCallback connect, DeviceActionCallback disconnect, DeviceActionCallback reconnect);
+    void SetCallbacks(ShowSettingsCallback showSettings, ExitCallback exit, DeviceActionCallback connect, DeviceActionCallback disconnect, DeviceActionCallback reconnect, ToggleDeviceCallback toggleDevice);
 
     /* Actions */
     /*------------------------------------------------------------------------------------------------------------------*/
@@ -52,6 +53,7 @@ public:
     void UpdateTooltip(std::wstring_view text);
     void ShowNotification(std::wstring const& title, std::wstring const& body, TrayNotificationType type);
     void UpdateTooltipFromConnections();
+    void RefreshDevicePickerState();
     void OnThemeChanged();
     void ToggleConnectingFrame();
     void Reregister();
@@ -70,8 +72,7 @@ private:
     winrt::Microsoft::UI::Xaml::Controls::Flyout CreatePickerFlyout();
     static void StripFlyoutPresenterStyle(winrt::Microsoft::UI::Xaml::DependencyObject const& content);
     [[nodiscard]] std::optional<POINT> CalculateSettingsWindowPosition() const;
-    void OnTrayIconLeftClick();
-    void OnTrayIconRightClick();
+    void OnTrayIconDoubleClick();
 
     /* Member Variables */
     /*------------------------------------------------------------------------------------------------------------------*/
@@ -90,11 +91,22 @@ private:
     DeviceActionCallback m_connectCallback;
     DeviceActionCallback m_disconnectCallback;
     DeviceActionCallback m_reconnectCallback;
+    ToggleDeviceCallback m_toggleDeviceCallback;
 
     UINT m_trayCallbackMsg = WM_APP + 1;
     std::size_t m_themeChangedToken = 0;
     ULONGLONG m_lastLeftClickTick = 0;
     ULONGLONG m_lastRightClickTick = 0;
+    ULONGLONG m_lastLeftDoubleClickTick = 0;
+
+    enum class PickerFlyoutState {
+        Closed,
+        Opening,
+        Open,
+        Closing,
+    };
+    std::atomic<PickerFlyoutState> m_pickerFlyoutState{PickerFlyoutState::Closed};
+
     bool m_devicePickerPreloaded = false;
     std::atomic_bool m_isTearingDown = false;
 };

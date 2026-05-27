@@ -27,9 +27,11 @@ Inspired by the original [AudioPlaybackConnector](https://github.com/ysc3839/Aud
 
 - System tray-only application
 - Left-click tray device picker
+- Double-click the tray icon to toggle the last connected device
 - Right-click tray context menu
 - Connect Bluetooth A2DP audio devices as playback sinks
 - Disconnect connected devices directly from the picker
+- Reconnect connected devices directly from the picker
 - Auto-reconnect on startup
 - Per-device auto-reconnect settings
 - Connected device names shown in the tray tooltip
@@ -126,7 +128,11 @@ Left-click the tray icon.
 
 The device picker shows available Bluetooth A2DP audio devices. Select a device to connect it as an audio playback sink.
 
-Connected devices show a disconnect button directly in the picker.
+Connected devices show reconnect and disconnect buttons directly in the picker.
+
+While a device is connecting, reconnecting, or disconnecting, the row is shown as busy and actions for that device are disabled.
+
+Double-clicking the tray icon toggles the most recently connected device. If that device is already connected, the app disconnects it; otherwise, the app connects it again.
 
 ### Open the tray menu
 

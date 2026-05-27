@@ -330,6 +330,7 @@ winrt::Windows::Foundation::IAsyncAction DeviceManager::ConnectAsync(winrt::hstr
                 auto guard = m_lock.lock_exclusive();
                 m_connectingIds.erase(deviceId);
             }
+            DeviceActivityChanged(deviceId);
             co_return;
         }
 
@@ -372,6 +373,7 @@ winrt::Windows::Foundation::IAsyncAction DeviceManager::ConnectAsync(winrt::hstr
         auto guard = m_lock.lock_exclusive();
         m_connectingIds.erase(deviceId);
     }
+    DeviceActivityChanged(deviceId);
 }
 
 void DeviceManager::ConnectDetached(winrt::hstring deviceId) {
@@ -426,7 +428,7 @@ winrt::fire_and_forget DeviceManager::ReconnectAsync(winrt::hstring deviceId) {
                 oldConn = std::move(iter->second.Connection);
                 oldToken = iter->second.StateChangedToken;
                 m_connections.erase(iter);
-                ++m_connectAttemptIds[deviceId];
+                ++m_connectAttemptIds[std::wstring(deviceId)];
                 m_disconnectingIds.insert(deviceId);
             }
         }
@@ -464,6 +466,7 @@ winrt::fire_and_forget DeviceManager::ReconnectAsync(winrt::hstring deviceId) {
             auto guard = m_lock.lock_exclusive();
             m_disconnectingIds.erase(deviceId);
         }
+        DeviceActivityChanged(deviceId);
 
         co_await ConnectAsync(deviceId);
 
@@ -482,6 +485,7 @@ winrt::fire_and_forget DeviceManager::ReconnectAsync(winrt::hstring deviceId) {
         auto guard = m_lock.lock_exclusive();
         m_reconnectingIds.erase(deviceId);
     }
+    DeviceActivityChanged(deviceId);
     co_return;
 }
 
@@ -514,11 +518,24 @@ bool DeviceManager::HasConnections() const {
     return std::ranges::any_of(m_connections, [](auto const& entry) { return entry.second.IsOpen; });
 }
 
+bool DeviceManager::HasBusyOperations() const {
+    auto guard = m_lock.lock_shared();
+    auto isPendingOpen = [&](winrt::hstring const& id) {
+        auto iter = m_connections.find(id);
+        return iter == m_connections.end() || !iter->second.IsOpen;
+    };
+
+    return std::ranges::any_of(m_connectingIds, isPendingOpen) ||
+           std::ranges::any_of(m_reconnectingIds, isPendingOpen);
+}
+
 bool DeviceManager::IsDeviceBusy(winrt::hstring const& deviceId) const {
     auto guard = m_lock.lock_shared();
-    return m_connectingIds.count(deviceId) > 0 ||
-           m_reconnectingIds.count(deviceId) > 0 ||
-           m_disconnectingIds.count(deviceId) > 0;
+    auto iter = m_connections.find(deviceId);
+    const bool hasConnection = iter != m_connections.end();
+    const bool isOpen = hasConnection && iter->second.IsOpen;
+    return ((m_connectingIds.count(deviceId) > 0 || m_reconnectingIds.count(deviceId) > 0) && !isOpen) ||
+           (m_disconnectingIds.count(deviceId) > 0 && hasConnection);
 }
 
 void DeviceManager::StartConnectionHeartbeat() {
@@ -587,7 +604,7 @@ void DeviceManager::LogConnectionSnapshot(winrt::hstring const& reason) const {
             if (auto iter = m_reconnectAttempts.find(id); iter != m_reconnectAttempts.end()) {
                 snapshot.ReconnectAttempts = iter->second;
             }
-            if (auto iter = m_connectAttemptIds.find(id); iter != m_connectAttemptIds.end()) {
+            if (auto iter = m_connectAttemptIds.find(std::wstring(id)); iter != m_connectAttemptIds.end()) {
                 snapshot.ConnectAttemptId = iter->second;
             }
             snapshots.push_back(std::move(snapshot));
@@ -660,7 +677,7 @@ void DeviceManager::Disconnect(winrt::hstring deviceId, DisconnectReason reason)
         }
         m_connections.erase(iter);
         noActiveConnections = m_connections.empty();
-        ++m_connectAttemptIds[deviceId];
+        ++m_connectAttemptIds[std::wstring(deviceId)];
         m_disconnectingIds.insert(deviceId);
         if (reason == DisconnectReason::UserInitiated) {
             m_cancelledReconnectIds.insert(deviceId);
@@ -715,6 +732,7 @@ void DeviceManager::Disconnect(winrt::hstring deviceId, DisconnectReason reason)
             m_cancelledReconnectIds.erase(deviceId);
         }
     }
+    DeviceActivityChanged(deviceId);
 
     // Close all zombie connections on a background thread. If Close() blocks
     // (e.g. for old UI-thread-bound connections) it will not freeze the caller.
@@ -768,13 +786,14 @@ void DeviceManager::ReportConnectionFailure(winrt::hstring const& deviceId, winr
 winrt::Windows::Foundation::IAsyncAction DeviceManager::ConnectInternalAsync(winrt::Windows::Devices::Enumeration::DeviceInformation device) {
     auto lifetime = shared_from_this();
     auto deviceId = device.Id();
+    const std::wstring deviceIdKey = std::wstring(deviceId);
     std::size_t attemptId = 0;
 
     {
         auto guard = m_lock.lock_exclusive();
         if (m_shutdownForProcessExit) co_return;
         if (m_connections.count(deviceId)) co_return;
-        attemptId = ++m_connectAttemptIds[deviceId];
+        attemptId = ++m_connectAttemptIds[deviceIdKey];
     }
 
     // Create the connection on a background thread. If AudioPlaybackConnection is STA-bound,
@@ -832,7 +851,7 @@ winrt::Windows::Foundation::IAsyncAction DeviceManager::ConnectInternalAsync(win
         bool shutdownForProcessExit = false;
         {
             auto guard = m_lock.lock_exclusive();
-            auto attempt = m_connectAttemptIds.find(deviceId);
+            auto attempt = m_connectAttemptIds.find(deviceIdKey);
             shutdownForProcessExit = m_shutdownForProcessExit;
             if (shutdownForProcessExit || attempt == m_connectAttemptIds.end() || attempt->second != attemptId || m_connections.count(deviceId)) {
                 duplicateConnection = true;
@@ -885,7 +904,7 @@ winrt::Windows::Foundation::IAsyncAction DeviceManager::ConnectInternalAsync(win
         bool currentAttempt = false;
         {
             auto guard = m_lock.lock_exclusive();
-            auto attempt = m_connectAttemptIds.find(deviceId);
+            auto attempt = m_connectAttemptIds.find(deviceIdKey);
             currentAttempt = !m_shutdownForProcessExit &&
                              attempt != m_connectAttemptIds.end() &&
                              attempt->second == attemptId &&
@@ -898,7 +917,7 @@ winrt::Windows::Foundation::IAsyncAction DeviceManager::ConnectInternalAsync(win
                 {
                     auto guard = m_lock.lock_exclusive();
                     auto iter = m_connections.find(deviceId);
-                    auto attempt = m_connectAttemptIds.find(deviceId);
+                    auto attempt = m_connectAttemptIds.find(deviceIdKey);
                     if (m_shutdownForProcessExit || iter == m_connections.end() || attempt == m_connectAttemptIds.end() || attempt->second != attemptId) co_return;
                     iter->second.IsOpen = true;
                     m_reconnectAttempts.erase(deviceId);
@@ -933,7 +952,8 @@ winrt::Windows::Foundation::IAsyncAction DeviceManager::ConnectInternalAsync(win
 bool DeviceManager::IsConnectAttemptCurrent(winrt::hstring const& deviceId, std::size_t attemptId) const {
     auto guard = m_lock.lock_shared();
     if (m_shutdownForProcessExit) return false;
-    auto attempt = m_connectAttemptIds.find(deviceId);
+    const std::wstring deviceIdKey = std::wstring(deviceId);
+    auto attempt = m_connectAttemptIds.find(deviceIdKey);
     return attempt != m_connectAttemptIds.end() &&
            attempt->second == attemptId;
 }

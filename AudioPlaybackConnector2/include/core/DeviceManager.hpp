@@ -30,6 +30,7 @@ public:
     using DeviceDisconnectedEvent = Event<winrt::hstring>;
     using ConnectionErrorEvent = Event<winrt::hstring, winrt::hstring>;
     using DeviceStatusEvent = Event<winrt::hstring, winrt::hstring, winrt::Windows::Devices::Enumeration::DevicePickerDisplayStatusOptions>;
+    using DeviceActivityEvent = Event<winrt::hstring>;
     using AutoReconnectTriggeredEvent = Event<winrt::hstring>;
     using AutoReconnectFailedEvent = Event<winrt::hstring>;
     using AutoReconnectPredicate = std::function<bool(winrt::hstring const&)>;
@@ -53,6 +54,7 @@ public:
 
     std::vector<DeviceConnectionInfo> GetConnectedDevices() const;
     bool HasConnections() const;
+    bool HasBusyOperations() const;
     bool IsDeviceBusy(winrt::hstring const& deviceId) const;
 
     /*------------------------------------------------------------------------------------------------------------------*/
@@ -63,6 +65,7 @@ public:
     DeviceDisconnectedEvent DeviceDisconnected;
     ConnectionErrorEvent ConnectionError;
     DeviceStatusEvent DeviceStatusChanged;
+    DeviceActivityEvent DeviceActivityChanged;
     AutoReconnectTriggeredEvent AutoReconnectTriggered;
     AutoReconnectFailedEvent AutoReconnectFailed;
 
@@ -102,7 +105,7 @@ private:
     std::unordered_set<winrt::hstring> m_cancelledReconnectIds;
     std::unordered_map<winrt::hstring, std::size_t> m_reconnectTimerCounts;
     std::unordered_map<winrt::hstring, std::size_t> m_reconnectAttempts;
-    std::unordered_map<winrt::hstring, std::size_t> m_connectAttemptIds;
+    std::unordered_map<std::wstring, std::size_t> m_connectAttemptIds;
     bool m_watcherStopping = false;
     bool m_allReconnectsCancelled = false;
     bool m_powerTransitionSuspended = false;

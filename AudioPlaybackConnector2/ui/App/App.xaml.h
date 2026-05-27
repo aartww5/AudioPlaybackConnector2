@@ -52,6 +52,8 @@ private:
     void SaveLastConnectedDevices();
     void HandlePowerSuspend();
     void HandlePowerResume();
+    void ToggleLastConnectedDeviceFromTray();
+    void RefreshTrayVisualState(bool forceErrorWhenIdle = false);
     [[nodiscard]] winrt::hstring ResolveKnownDeviceName(winrt::hstring const& id) const;
 
     /*------------------------------------------------------------------------------------------------------------------*/
@@ -89,6 +91,7 @@ private:
     std::size_t m_autoReconnectTriggeredToken = 0;
     std::size_t m_autoReconnectFailedToken = 0;
     std::size_t m_deviceStatusChangedToken = 0;
+    std::size_t m_deviceActivityChangedToken = 0;
 
     std::shared_ptr<NotificationService> m_notificationService;
     std::shared_ptr<TrayController> m_trayController;

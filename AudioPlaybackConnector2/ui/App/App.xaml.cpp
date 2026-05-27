@@ -203,6 +203,7 @@ void winrt::AudioPlaybackConnector2::implementation::App::OnMainWindowLoaded(Con
         m_notificationService->ShowAppStarted();
     }
     TryAutoReconnect();
+    RefreshTrayVisualState(false);
 
     gdiplusGuard.release();
 
@@ -236,6 +237,9 @@ void winrt::AudioPlaybackConnector2::implementation::App::InitializeTray() {
         },
         [weak](winrt::hstring id) {
             if (auto self = weak.get(); self && self->m_deviceManager) self->m_deviceManager->ReconnectAsync(id);
+        },
+        [weak]() {
+            if (auto self = weak.get()) self->ToggleLastConnectedDeviceFromTray();
         });
     m_trayController->PreloadDevicePicker();
     DebugTrace(L"[App] TrayController initialized");
@@ -285,6 +289,46 @@ winrt::hstring winrt::AudioPlaybackConnector2::implementation::App::ResolveKnown
     auto it = std::ranges::find_if(locked->Devices, [&](const auto& device) { return device.Id == id; });
     if (it != locked->Devices.end()) return winrt::hstring(it->Name);
     return id;
+}
+
+void winrt::AudioPlaybackConnector2::implementation::App::ToggleLastConnectedDeviceFromTray() {
+    if (m_exiting.load() || !m_settings || !m_deviceManager) return;
+
+    std::wstring targetId;
+    {
+        auto locked = m_settings->LockSharedData();
+        if (locked->LastConnectedIds.empty()) {
+            DebugTrace(L"[App] Tray double-click ignored: no last connected device");
+            return;
+        }
+        targetId = locked->LastConnectedIds.front();
+    }
+
+    if (targetId.empty()) return;
+
+    auto id = winrt::hstring(targetId);
+
+    if (m_deviceManager->IsDeviceBusy(id)) {
+        DebugTrace(L"[App] Tray double-click ignored: device busy: {0}", targetId);
+        return;
+    }
+
+    bool isConnected = false;
+    for (const auto& c : m_deviceManager->GetConnectedDevices()) {
+        if (c.Device.Id() == id) {
+            isConnected = true;
+            break;
+        }
+    }
+
+    if (isConnected) {
+        DebugTrace(L"[App] Tray double-click: disconnecting {0}", targetId);
+        m_deviceManager->Disconnect(id);
+    } else {
+        DebugTrace(L"[App] Tray double-click: connecting {0}", targetId);
+        m_deviceManager->ConnectDetached(id);
+    }
+    RefreshTrayVisualState(false);
 }
 
 void winrt::AudioPlaybackConnector2::implementation::App::TryAutoReconnect() {
@@ -417,6 +461,30 @@ void winrt::AudioPlaybackConnector2::implementation::App::RunOnUIThread(std::fun
     }
 }
 
+void winrt::AudioPlaybackConnector2::implementation::App::RefreshTrayVisualState(bool forceErrorWhenIdle) {
+    if (m_exiting.load() || !m_trayController || !m_deviceManager) return;
+    if (!m_hwnd || !IsWindow(m_hwnd)) return;
+
+    const bool hasBusyOperations = m_deviceManager->HasBusyOperations();
+    const bool hasConnections = m_deviceManager->HasConnections();
+
+    if (forceErrorWhenIdle) {
+        KillTimer(m_hwnd, c_timerAnimation);
+        m_trayController->SetState(hasConnections ? TrayIconState::Connected : TrayIconState::Error);
+    } else if (hasBusyOperations) {
+        m_trayController->SetState(TrayIconState::Connecting);
+        SetTimer(m_hwnd, c_timerAnimation, 200, nullptr);
+    } else {
+        KillTimer(m_hwnd, c_timerAnimation);
+        m_trayController->SetState(hasConnections ? TrayIconState::Connected : TrayIconState::Idle);
+    }
+
+    if (!forceErrorWhenIdle) {
+        m_trayController->UpdateTooltipFromConnections();
+    }
+    m_trayController->RefreshDevicePickerState();
+}
+
 void winrt::AudioPlaybackConnector2::implementation::App::SetupDeviceEvents() {
     DebugTrace(L"[App] SetupDeviceEvents()");
     auto weak = get_weak();
@@ -462,30 +530,21 @@ void winrt::AudioPlaybackConnector2::implementation::App::SetupDeviceEvents() {
                 if (!self) return;
                 if (self->m_exiting.load() || !self->m_trayController || !self->m_deviceManager) return;
                 if (!self->m_hwnd || !IsWindow(self->m_hwnd)) return;
-                if (status == winrt::hstring(_("Connecting")) || status == winrt::hstring(_("Reconnecting"))) {
-                    self->m_trayController->SetState(TrayIconState::Connecting);
-                    SetTimer(self->m_hwnd, c_timerAnimation, 200, nullptr);
-                    self->m_trayController->UpdateTooltipFromConnections();
-                } else if (status == winrt::hstring(_("Connected"))) {
-                    bool isStillConnected = false;
-                    for (const auto& c : self->m_deviceManager->GetConnectedDevices()) {
-                        if (c.Device.Id() == id) {
-                            isStillConnected = true;
-                            break;
-                        }
-                    }
-                    KillTimer(self->m_hwnd, c_timerAnimation);
-                    self->m_trayController->SetState(isStillConnected || self->m_deviceManager->HasConnections() ? TrayIconState::Connected : TrayIconState::Idle);
-                    self->m_trayController->UpdateTooltipFromConnections();
-                } else if (!status.empty()) {
-                    KillTimer(self->m_hwnd, c_timerAnimation);
-                    self->m_trayController->SetState(self->m_deviceManager->HasConnections() ? TrayIconState::Connected : TrayIconState::Error);
-                    self->m_trayController->UpdateTooltipFromConnections();
-                } else {
-                    KillTimer(self->m_hwnd, c_timerAnimation);
-                    self->m_trayController->SetState(self->m_deviceManager->HasConnections() ? TrayIconState::Connected : TrayIconState::Idle);
-                    self->m_trayController->UpdateTooltipFromConnections();
-                }
+                bool forceErrorWhenIdle =
+                    !status.empty() &&
+                    status != winrt::hstring(_("Connecting")) &&
+                    status != winrt::hstring(_("Reconnecting")) &&
+                    status != winrt::hstring(_("Connected"));
+                self->RefreshTrayVisualState(forceErrorWhenIdle);
+            });
+        }
+    };
+    m_deviceActivityChangedToken = m_deviceManager->DeviceActivityChanged += [weak](auto) {
+        if (auto self = weak.get()) {
+            self->RunOnUIThread([weak]() {
+                auto self = weak.get();
+                if (!self || self->m_exiting.load() || !self->m_trayController) return;
+                self->m_trayController->RefreshDevicePickerState();
             });
         }
     };
@@ -516,6 +575,10 @@ void winrt::AudioPlaybackConnector2::implementation::App::TeardownDeviceEvents()
     if (m_deviceStatusChangedToken) {
         m_deviceManager->DeviceStatusChanged -= m_deviceStatusChangedToken;
         m_deviceStatusChangedToken = 0;
+    }
+    if (m_deviceActivityChangedToken) {
+        m_deviceManager->DeviceActivityChanged -= m_deviceActivityChangedToken;
+        m_deviceActivityChangedToken = 0;
     }
 }
 
@@ -652,6 +715,7 @@ void winrt::AudioPlaybackConnector2::implementation::App::OnDeviceConnected(winr
 
     // Check-and-insert under a single exclusive lock to prevent duplicate entries.
     bool addedNew = false;
+    bool updatedLastConnected = false;
     {
         auto locked = m_settings->LockExclusiveData();
         bool alreadyKnown = std::ranges::any_of(locked->Devices, [&](const auto& d) { return d.Id == id; });
@@ -663,11 +727,20 @@ void winrt::AudioPlaybackConnector2::implementation::App::OnDeviceConnected(winr
             locked->Devices.push_back(std::move(newDevice));
             addedNew = true;
         }
+
+        auto existing = std::ranges::find(locked->LastConnectedIds, std::wstring(id));
+        if (existing != locked->LastConnectedIds.end()) {
+            locked->LastConnectedIds.erase(existing);
+        }
+        locked->LastConnectedIds.insert(locked->LastConnectedIds.begin(), std::wstring(id));
+        updatedLastConnected = true;
     }
 
-    if (addedNew) {
+    if (addedNew || updatedLastConnected) {
         m_settings->Save(GetModuleHandleW(nullptr));
-        DebugTrace(L"[App] New device added to settings: {0}", std::wstring(deviceName));
+        if (addedNew) {
+            DebugTrace(L"[App] New device added to settings: {0}", std::wstring(deviceName));
+        }
     }
 
     {
@@ -681,7 +754,7 @@ void winrt::AudioPlaybackConnector2::implementation::App::OnDeviceConnected(winr
 
     m_notificationService->ShowDeviceConnected(id, deviceName);
 
-    m_trayController->UpdateTooltipFromConnections();
+    RefreshTrayVisualState(false);
 }
 
 void winrt::AudioPlaybackConnector2::implementation::App::OnDeviceDisconnected(winrt::hstring const& id) {
@@ -691,7 +764,7 @@ void winrt::AudioPlaybackConnector2::implementation::App::OnDeviceDisconnected(w
     winrt::hstring deviceName = ResolveKnownDeviceName(id);
     m_notificationService->ShowDeviceDisconnected(id, deviceName);
 
-    m_trayController->UpdateTooltipFromConnections();
+    RefreshTrayVisualState(false);
 }
 
 void winrt::AudioPlaybackConnector2::implementation::App::OnConnectionError(winrt::hstring const& id, winrt::hstring msg) {
@@ -701,6 +774,7 @@ void winrt::AudioPlaybackConnector2::implementation::App::OnConnectionError(winr
         std::wstring tip = std::wstring(_("AppName")) + L"\n" + std::wstring(msg);
         m_trayController->UpdateTooltip(tip);
     }
+    RefreshTrayVisualState(true);
 }
 
 void winrt::AudioPlaybackConnector2::implementation::App::OnAutoReconnectTriggered(winrt::hstring const& id) {

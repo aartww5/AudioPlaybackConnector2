@@ -27,8 +27,10 @@ void TrayController::Initialize(HWND hwnd, winrt::Microsoft::UI::Xaml::Window ma
     m_isTearingDown.store(false);
     m_hwnd = hwnd;
     m_mainWindow = mainWindow;
+    m_pickerFlyoutState.store(PickerFlyoutState::Closed);
     m_lastLeftClickTick = 0;
     m_lastRightClickTick = 0;
+    m_lastLeftDoubleClickTick = 0;
 
     m_trayIcon = std::make_unique<TrayIcon>();
     m_trayIcon->Initialize(m_hwnd, m_trayCallbackMsg);
@@ -64,6 +66,13 @@ void TrayController::SetDeviceManager(std::shared_ptr<DeviceManager> deviceManag
 
 void TrayController::Teardown() noexcept {
     m_isTearingDown.store(true);
+    if (m_pickerFlyout) {
+        try {
+            m_pickerFlyout.Hide();
+        } catch (...) {
+            DebugTrace(L"[TrayController] ERROR: failed to hide picker flyout during teardown");
+        }
+    }
     if (m_themeChangedToken) {
         ThemeHelper::RemoveThemeChangedHandler(m_themeChangedToken);
         m_themeChangedToken = 0;
@@ -73,6 +82,7 @@ void TrayController::Teardown() noexcept {
     m_connectCallback = nullptr;
     m_disconnectCallback = nullptr;
     m_reconnectCallback = nullptr;
+    m_toggleDeviceCallback = nullptr;
     if (m_trayIcon) {
         m_trayIcon->Remove();
         m_trayIcon.reset();
@@ -80,22 +90,25 @@ void TrayController::Teardown() noexcept {
     m_contextMenu.reset();
     m_devicePickerView = nullptr;
     m_pickerFlyout = nullptr;
+    m_pickerFlyoutState.store(PickerFlyoutState::Closed);
     m_hwnd = nullptr;
     m_devicePickerPreloaded = false;
     m_lastLeftClickTick = 0;
     m_lastRightClickTick = 0;
+    m_lastLeftDoubleClickTick = 0;
 }
 
 /*------------------------------------------------------------------------------------------------------------------*/
 /*//////// Callbacks //////////////////////////////////////////////////////////////////////////////////////////////*/
 /*------------------------------------------------------------------------------------------------------------------*/
 
-void TrayController::SetCallbacks(ShowSettingsCallback showSettings, ExitCallback exit, DeviceActionCallback connect, DeviceActionCallback disconnect, DeviceActionCallback reconnect) {
+void TrayController::SetCallbacks(ShowSettingsCallback showSettings, ExitCallback exit, DeviceActionCallback connect, DeviceActionCallback disconnect, DeviceActionCallback reconnect, ToggleDeviceCallback toggleDevice) {
     m_showSettingsCallback = std::move(showSettings);
     m_exitCallback = std::move(exit);
     m_connectCallback = std::move(connect);
     m_disconnectCallback = std::move(disconnect);
     m_reconnectCallback = std::move(reconnect);
+    m_toggleDeviceCallback = std::move(toggleDevice);
 }
 
 /*------------------------------------------------------------------------------------------------------------------*/
@@ -133,6 +146,11 @@ void TrayController::ShowDevicePicker() {
     if (m_isTearingDown.load()) return;
     DebugTrace(L"[TrayController] OnTrayIconLeftClick()");
 
+    if (m_pickerFlyoutState.load() != PickerFlyoutState::Closed) {
+        DebugTrace(L"[TrayController] Picker flyout state is not closed, ignoring click");
+        return;
+    }
+
     auto rect = m_trayIcon->GetIconRect();
     if (!rect) {
         DebugTrace(L"[TrayController] ERROR: GetIconRect() returned null");
@@ -145,19 +163,22 @@ void TrayController::ShowDevicePicker() {
         return;
     }
 
-    if (m_pickerFlyout && m_pickerFlyout.IsOpen()) {
-        DebugTrace(L"[TrayController] Picker flyout already open, ignoring second click");
+    EnsureDevicePickerViewCreated();
+
+    m_pickerFlyoutState.store(PickerFlyoutState::Opening);
+    try {
+        m_pickerFlyout = CreatePickerFlyout();
+    } catch (...) {
+        m_pickerFlyoutState.store(PickerFlyoutState::Closed);
+        m_pickerFlyout = nullptr;
+        DebugTrace(L"[TrayController] ERROR: failed to create picker flyout");
         return;
     }
-
-    EnsureDevicePickerViewCreated();
 
     if (m_devicePickerView) {
         auto impl = m_devicePickerView.as<winrt::AudioPlaybackConnector2::implementation::DevicePickerView>();
         impl->LoadDevices();
     }
-
-    m_pickerFlyout = CreatePickerFlyout();
 
     POINT pt{rect->left, rect->top};
     ScreenToClient(m_hwnd, &pt);
@@ -173,7 +194,13 @@ void TrayController::ShowDevicePicker() {
 
     Controls::Primitives::FlyoutShowOptions options;
     options.Position(point);
-    m_pickerFlyout.ShowAt(root, options);
+    try {
+        m_pickerFlyout.ShowAt(root, options);
+    } catch (...) {
+        m_pickerFlyoutState.store(PickerFlyoutState::Closed);
+        m_pickerFlyout = nullptr;
+        DebugTrace(L"[TrayController] ERROR: failed to show picker flyout");
+    }
 }
 
 void TrayController::UpdateTooltip(std::wstring_view text) {
@@ -200,6 +227,16 @@ void TrayController::UpdateTooltipFromConnections() {
             tip += L"\n";
         }
         m_trayIcon->SetTooltip(tip);
+    }
+}
+
+void TrayController::RefreshDevicePickerState() {
+    if (!m_devicePickerView || m_pickerFlyoutState.load() == PickerFlyoutState::Closed) return;
+    try {
+        auto impl = m_devicePickerView.as<winrt::AudioPlaybackConnector2::implementation::DevicePickerView>();
+        impl->RefreshDeviceStates();
+    } catch (...) {
+        DebugTrace(L"[TrayController] ERROR: failed to refresh picker device state");
     }
 }
 
@@ -233,9 +270,25 @@ std::optional<POINT> TrayController::GetSettingsWindowPosition() const {
 
 void TrayController::HandleTrayMessage([[maybe_unused]] WPARAM wParam, LPARAM lParam) {
     if (m_isTearingDown.load()) return;
+
+    auto dispatcher = m_mainWindow ? m_mainWindow.DispatcherQueue() : nullptr;
+    if (dispatcher && !dispatcher.HasThreadAccess()) {
+        auto weak = weak_from_this();
+        bool enqueued = dispatcher.TryEnqueue([weak, wParam, lParam]() {
+            if (auto self = weak.lock()) {
+                self->HandleTrayMessage(wParam, lParam);
+            }
+        });
+        if (!enqueued) {
+            DebugTrace(L"[TrayController] ERROR: failed to marshal tray message to UI thread");
+        }
+        return;
+    }
+
     auto loword = LOWORD(lParam);
 
     constexpr ULONGLONG c_clickDebounceMs = 200;
+    constexpr ULONGLONG c_doubleClickSuppressMs = 450;
 
     auto shouldProcess = [](ULONGLONG& lastTick, ULONGLONG debounceMs) {
         auto now = GetTickCount64();
@@ -250,9 +303,21 @@ void TrayController::HandleTrayMessage([[maybe_unused]] WPARAM wParam, LPARAM lP
         case WM_LBUTTONUP:
         case NIN_SELECT:
         case NIN_KEYSELECT:
+            if (GetTickCount64() - m_lastLeftDoubleClickTick < c_doubleClickSuppressMs) {
+                break;
+            }
             if (shouldProcess(m_lastLeftClickTick, c_clickDebounceMs)) {
                 ShowDevicePicker();
             }
+            break;
+
+        case WM_LBUTTONDBLCLK:
+            m_lastLeftDoubleClickTick = GetTickCount64();
+            if (m_pickerFlyout && m_pickerFlyoutState.load() != PickerFlyoutState::Closed) {
+                m_pickerFlyoutState.store(PickerFlyoutState::Closing);
+                m_pickerFlyout.Hide();
+            }
+            OnTrayIconDoubleClick();
             break;
 
         case WM_CONTEXTMENU:
@@ -350,6 +415,7 @@ void TrayController::StripFlyoutPresenterStyle(winrt::Microsoft::UI::Xaml::Depen
             parent = winrt::Microsoft::UI::Xaml::Media::VisualTreeHelper::GetParent(parent);
         }
     } catch (...) {
+        DebugTrace(L"[TrayController] ERROR: StripFlyoutPresenterStyle failed");
     }
 }
 
@@ -362,6 +428,7 @@ Controls::Flyout TrayController::CreatePickerFlyout() {
     flyout.Opened([weak](auto&, auto&) {
         auto self = weak.lock();
         if (self && !self->m_isTearingDown.load() && self->m_pickerFlyout) {
+            self->m_pickerFlyoutState.store(PickerFlyoutState::Open);
             StripFlyoutPresenterStyle(self->m_pickerFlyout.Content().as<winrt::Microsoft::UI::Xaml::DependencyObject>());
         }
     });
@@ -370,6 +437,7 @@ Controls::Flyout TrayController::CreatePickerFlyout() {
         try {
             auto self = weak.lock();
             if (!self || self->m_isTearingDown.load()) return;
+            self->m_pickerFlyoutState.store(PickerFlyoutState::Closing);
             if (self->m_devicePickerView) {
                 auto impl = self->m_devicePickerView.as<winrt::AudioPlaybackConnector2::implementation::DevicePickerView>();
                 impl->CancelLoadDevices();
@@ -378,6 +446,7 @@ Controls::Flyout TrayController::CreatePickerFlyout() {
                 self->m_pickerFlyout.Content(nullptr);
             }
         } catch (...) {
+            DebugTrace(L"[TrayController] ERROR: Picker flyout closing handler failed");
         }
     });
 
@@ -388,6 +457,7 @@ Controls::Flyout TrayController::CreatePickerFlyout() {
         if (self->m_hwnd && IsWindow(self->m_hwnd)) {
             SetWindowPos(self->m_hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         }
+        self->m_pickerFlyoutState.store(PickerFlyoutState::Closed);
         self->m_pickerFlyout = nullptr;
     });
 
@@ -415,6 +485,14 @@ std::optional<POINT> TrayController::CalculateSettingsWindowPosition() const {
         y = rcWork.bottom - c_settingsWindowHeight;
 
     return POINT{x, y};
+}
+
+void TrayController::OnTrayIconDoubleClick() {
+    if (m_isTearingDown.load()) return;
+    DebugTrace(L"[TrayController] OnTrayIconDoubleClick()");
+    if (m_toggleDeviceCallback) {
+        m_toggleDeviceCallback();
+    }
 }
 
 void TrayController::LaunchBluetoothSettings() {
