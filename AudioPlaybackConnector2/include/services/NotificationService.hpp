@@ -1,7 +1,9 @@
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <memory>
+#include <vector>
 
 /*------------------------------------------------------------------------------------------------------------------*/
 /*//////// Notification Service //////////////////////////////////////////////////////////////////////////////////*/
@@ -57,13 +59,29 @@ private:
     /* Internal Helpers */
     /*------------------------------------------------------------------------------------------------------------------*/
 
-    [[nodiscard]] bool TryShowToast(std::wstring const& xml, winrt::hstring const& tag, winrt::Windows::Foundation::DateTime const& expiration);
-    void ShowToastOrFallback(std::wstring const& xml,
-                             winrt::hstring const& tag,
-                             winrt::Windows::Foundation::DateTime const& expiration,
-                             std::wstring const& fallbackTitle,
-                             std::wstring const& fallbackBody,
-                             FallbackNotificationType fallbackType);
+    struct StatusNotificationTagReservation {
+        std::vector<winrt::hstring> TagsToRemove;
+        winrt::hstring CurrentTag;
+        uint64_t Generation = 0;
+    };
+
+    [[nodiscard]] StatusNotificationTagReservation ReserveStatusNotificationTag();
+    [[nodiscard]] bool IsStatusNotificationGenerationCurrent(uint64_t generation) const;
+    winrt::fire_and_forget ShowToastOrFallbackAsync(std::wstring xml,
+                                                    winrt::hstring group,
+                                                    winrt::hstring tag,
+                                                    std::vector<winrt::hstring> tagsToRemove,
+                                                    uint64_t generation,
+                                                    winrt::Windows::Foundation::DateTime expiration,
+                                                    std::wstring fallbackTitle,
+                                                    std::wstring fallbackBody,
+                                                    FallbackNotificationType fallbackType);
+    void ShowStatusToastOrFallback(std::wstring const& xml,
+                                   winrt::Windows::Foundation::DateTime const& expiration,
+                                   std::wstring const& fallbackTitle,
+                                   std::wstring const& fallbackBody,
+                                   FallbackNotificationType fallbackType);
+    void ShowFallbackNotification(std::wstring const& fallbackTitle, std::wstring const& fallbackBody, FallbackNotificationType fallbackType);
 
     /* Member Variables */
     /*------------------------------------------------------------------------------------------------------------------*/
@@ -72,6 +90,8 @@ private:
     winrt::event_token m_notificationInvokedToken{};
     ReconnectRequestedCallback m_reconnectCallback;
     FallbackNotificationCallback m_fallbackNotifier;
+    std::vector<winrt::hstring> m_statusNotificationTags;
+    uint64_t m_statusNotificationGeneration = 0;
     bool m_notificationsRegistered = false;
     bool m_isTearingDown = false;
     mutable wil::srwlock m_lock;

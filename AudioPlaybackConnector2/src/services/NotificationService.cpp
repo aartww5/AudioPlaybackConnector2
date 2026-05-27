@@ -12,6 +12,9 @@ namespace AppNotifications = winrt::Microsoft::Windows::AppNotifications;
 
 namespace {
 
+constexpr wchar_t kStatusNotificationGroup[] = L"audioPlaybackConnectorStatus";
+constexpr wchar_t kStatusNotificationTagPrefix[] = L"currentStatus:";
+
 std::wstring ReplacePlaceholders(std::wstring_view templateStr, std::wstring_view replacement) {
     std::wstring result;
     size_t pos = 0;
@@ -259,39 +262,96 @@ void NotificationService::SetFallbackNotifier(FallbackNotificationCallback callb
 /*//////// Internal Helpers //////////////////////////////////////////////////////////////////////////////////////*/
 /*------------------------------------------------------------------------------------------------------------------*/
 
-bool NotificationService::TryShowToast(std::wstring const& xml, winrt::hstring const& tag, winrt::Windows::Foundation::DateTime const& expiration) {
+NotificationService::StatusNotificationTagReservation NotificationService::ReserveStatusNotificationTag() {
+    auto guard = m_lock.lock_exclusive();
+    const auto generation = ++m_statusNotificationGeneration;
+
+    StatusNotificationTagReservation reservation;
+    reservation.TagsToRemove = std::move(m_statusNotificationTags);
+    reservation.CurrentTag = winrt::hstring(kStatusNotificationTagPrefix) + winrt::hstring(std::to_wstring(generation));
+    reservation.Generation = generation;
+
+    m_statusNotificationTags.clear();
+    m_statusNotificationTags.push_back(reservation.CurrentTag);
+    return reservation;
+}
+
+bool NotificationService::IsStatusNotificationGenerationCurrent(uint64_t generation) const {
+    auto guard = m_lock.lock_shared();
+    return !m_isTearingDown && generation == m_statusNotificationGeneration;
+}
+
+winrt::fire_and_forget NotificationService::ShowToastOrFallbackAsync(std::wstring xml,
+                                                                     winrt::hstring group,
+                                                                     winrt::hstring tag,
+                                                                     std::vector<winrt::hstring> tagsToRemove,
+                                                                     uint64_t generation,
+                                                                     winrt::Windows::Foundation::DateTime expiration,
+                                                                     std::wstring fallbackTitle,
+                                                                     std::wstring fallbackBody,
+                                                                     FallbackNotificationType fallbackType) {
+    auto lifetime = shared_from_this();
     AppNotifications::AppNotificationManager notificationManager{nullptr};
+    bool useFallback = false;
     {
         auto guard = m_lock.lock_shared();
-        if (m_isTearingDown || !m_notificationManager || !m_notificationsRegistered) return false;
-        notificationManager = m_notificationManager;
+        if (m_isTearingDown || !m_notificationManager || !m_notificationsRegistered) {
+            useFallback = true;
+        } else {
+            notificationManager = m_notificationManager;
+        }
+    }
+
+    if (useFallback) {
+        ShowFallbackNotification(fallbackTitle, fallbackBody, fallbackType);
+        co_return;
     }
 
     try {
+        for (auto const& tagToRemove : tagsToRemove) {
+            if (!tagToRemove.empty() && tagToRemove != tag) {
+                co_await notificationManager.RemoveByTagAndGroupAsync(tagToRemove, group);
+            }
+        }
+
+        if (!IsStatusNotificationGenerationCurrent(generation)) co_return;
+
         AppNotifications::AppNotification notification{winrt::hstring(xml)};
-        notification.Group(L"audioPlaybackConnector");
+        notification.Group(group);
         notification.Tag(tag);
         notification.Expiration(expiration);
         notification.ExpiresOnReboot(true);
         notificationManager.Show(notification);
-        return true;
+        co_return;
     } catch (winrt::hresult_error const& ex) {
         DebugTrace(L"[NotificationService] AppNotificationManager.Show failed: 0x{0:X} {1}", static_cast<uint32_t>(ex.code()), ex.message());
     } catch (...) {
         DebugTrace(L"[NotificationService] AppNotificationManager.Show failed: unknown exception");
     }
 
-    return false;
+    if (IsStatusNotificationGenerationCurrent(generation)) {
+        ShowFallbackNotification(fallbackTitle, fallbackBody, fallbackType);
+    }
 }
 
-void NotificationService::ShowToastOrFallback(std::wstring const& xml,
-                                              winrt::hstring const& tag,
-                                              winrt::Windows::Foundation::DateTime const& expiration,
-                                              std::wstring const& fallbackTitle,
-                                              std::wstring const& fallbackBody,
-                                              FallbackNotificationType fallbackType) {
-    if (TryShowToast(xml, tag, expiration)) return;
+void NotificationService::ShowStatusToastOrFallback(std::wstring const& xml,
+                                                    winrt::Windows::Foundation::DateTime const& expiration,
+                                                    std::wstring const& fallbackTitle,
+                                                    std::wstring const& fallbackBody,
+                                                    FallbackNotificationType fallbackType) {
+    auto reservation = ReserveStatusNotificationTag();
+    ShowToastOrFallbackAsync(std::wstring(xml),
+                             kStatusNotificationGroup,
+                             reservation.CurrentTag,
+                             std::move(reservation.TagsToRemove),
+                             reservation.Generation,
+                             expiration,
+                             fallbackTitle,
+                             fallbackBody,
+                             fallbackType);
+}
 
+void NotificationService::ShowFallbackNotification(std::wstring const& fallbackTitle, std::wstring const& fallbackBody, FallbackNotificationType fallbackType) {
     FallbackNotificationCallback fallbackNotifier;
     {
         auto guard = m_lock.lock_shared();
@@ -312,26 +372,14 @@ void NotificationService::ShowAppStarted() {
     auto title = NotificationText("Notification_AppStarted_Title");
     auto body = NotificationText("Notification_AppStarted_Body");
     auto xml = BuildToastXml(title, body, L"", L"", L"", L"ms-appx:///Images/ToastInfo.png", L"<audio silent=\"true\"/>");
-    ShowToastOrFallback(xml, L"appStarted", ExpirationFromNow(std::chrono::seconds(7)), std::wstring(_("AppName")), body, FallbackNotificationType::Info);
+    ShowStatusToastOrFallback(xml,
+                              ExpirationFromNow(std::chrono::seconds(7)),
+                              std::wstring(_("AppName")),
+                              body,
+                              FallbackNotificationType::Info);
 }
 
 void NotificationService::ShowDeviceConnected(winrt::hstring const& id, winrt::hstring const& deviceName) {
-    AppNotifications::AppNotificationManager notificationManager{nullptr};
-    {
-        auto guard = m_lock.lock_shared();
-        if (!m_isTearingDown && m_notificationManager && m_notificationsRegistered) {
-            notificationManager = m_notificationManager;
-        }
-    }
-
-    if (notificationManager) {
-        try {
-            auto removeOperation = notificationManager.RemoveByTagAndGroupAsync(winrt::hstring(L"autoReconnect:") + id, L"audioPlaybackConnector");
-            (void)removeOperation;
-        } catch (...) {
-        }
-    }
-
     auto title = NotificationText("Notification_Connected", deviceName);
     auto xml = BuildToastXml(title,
                              L"",
@@ -343,10 +391,14 @@ void NotificationService::ShowDeviceConnected(winrt::hstring const& id, winrt::h
                              L"long");
 
     auto fallbackBody = ReplacePlaceholders(std::wstring(_("Notification_Connected")), deviceName);
-    ShowToastOrFallback(xml, winrt::hstring(L"deviceConnected:") + id, ExpirationFromNow(std::chrono::hours(1)), std::wstring(_("AppName")), fallbackBody, FallbackNotificationType::Info);
+    ShowStatusToastOrFallback(xml,
+                              ExpirationFromNow(std::chrono::minutes(1)),
+                              std::wstring(_("AppName")),
+                              fallbackBody,
+                              FallbackNotificationType::Info);
 }
 
-void NotificationService::ShowDeviceDisconnected(winrt::hstring const& id, winrt::hstring const& deviceName) {
+void NotificationService::ShowDeviceDisconnected(winrt::hstring const&, winrt::hstring const& deviceName) {
     auto title = NotificationText("Notification_Disconnected", deviceName);
     auto xml = BuildToastXml(title,
                              NotificationText("Notification_Disconnected_Body"),
@@ -357,10 +409,14 @@ void NotificationService::ShowDeviceDisconnected(winrt::hstring const& id, winrt
                              L"<audio silent=\"true\"/>");
 
     auto fallbackBody = ReplacePlaceholders(std::wstring(_("Notification_Disconnected")), deviceName);
-    ShowToastOrFallback(xml, winrt::hstring(L"deviceDisconnected:") + id, ExpirationFromNow(std::chrono::minutes(1)), std::wstring(_("AppName")), fallbackBody, FallbackNotificationType::Warning);
+    ShowStatusToastOrFallback(xml,
+                              ExpirationFromNow(std::chrono::minutes(1)),
+                              std::wstring(_("AppName")),
+                              fallbackBody,
+                              FallbackNotificationType::Warning);
 }
 
-void NotificationService::ShowAutoReconnect(winrt::hstring const& id, winrt::hstring const& deviceName) {
+void NotificationService::ShowAutoReconnect(winrt::hstring const&, winrt::hstring const& deviceName) {
     auto title = NotificationText("Notification_AutoReconnect", deviceName);
     auto xml = BuildToastXml(title,
                              NotificationText("Notification_AutoReconnect_Body"),
@@ -371,7 +427,11 @@ void NotificationService::ShowAutoReconnect(winrt::hstring const& id, winrt::hst
                              L"<audio silent=\"true\"/>");
 
     auto fallbackBody = ReplacePlaceholders(std::wstring(_("Notification_AutoReconnect")), deviceName);
-    ShowToastOrFallback(xml, winrt::hstring(L"autoReconnect:") + id, ExpirationFromNow(std::chrono::minutes(1)), std::wstring(_("AppName")), fallbackBody, FallbackNotificationType::Info);
+    ShowStatusToastOrFallback(xml,
+                              ExpirationFromNow(std::chrono::minutes(1)),
+                              std::wstring(_("AppName")),
+                              fallbackBody,
+                              FallbackNotificationType::Info);
 }
 
 void NotificationService::ShowAutoReconnectFailed(winrt::hstring const& id, winrt::hstring const& deviceName) {
@@ -385,7 +445,11 @@ void NotificationService::ShowAutoReconnectFailed(winrt::hstring const& id, winr
                              L"<audio src=\"ms-winsoundevent:Notification.Looping.Alarm2\"/>");
 
     auto fallbackBody = ReplacePlaceholders(std::wstring(_("Notification_AutoReconnectFailed")), deviceName);
-    ShowToastOrFallback(xml, winrt::hstring(L"autoReconnect:") + id, ExpirationFromNow(std::chrono::hours(1)), std::wstring(_("AppName")), fallbackBody, FallbackNotificationType::Error);
+    ShowStatusToastOrFallback(xml,
+                              ExpirationFromNow(std::chrono::hours(1)),
+                              std::wstring(_("AppName")),
+                              fallbackBody,
+                              FallbackNotificationType::Error);
 }
 
 /*------------------------------------------------------------------------------------------------------------------*/
