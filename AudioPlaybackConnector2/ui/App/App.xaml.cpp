@@ -543,8 +543,9 @@ void winrt::AudioPlaybackConnector2::implementation::App::SetupDeviceEvents() {
         if (auto self = weak.get()) {
             self->RunOnUIThread([weak]() {
                 auto self = weak.get();
-                if (!self || self->m_exiting.load() || !self->m_trayController) return;
-                self->m_trayController->RefreshDevicePickerState();
+                if (!self || self->m_exiting.load() || !self->m_trayController || !self->m_deviceManager) return;
+                if (!self->m_hwnd || !IsWindow(self->m_hwnd)) return;
+                self->RefreshTrayVisualState(false);
             });
         }
     };

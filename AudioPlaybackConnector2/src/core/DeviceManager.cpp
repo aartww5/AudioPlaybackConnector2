@@ -526,7 +526,7 @@ bool DeviceManager::HasBusyOperations() const {
     };
 
     return std::ranges::any_of(m_connectingIds, isPendingOpen) ||
-           std::ranges::any_of(m_reconnectingIds, isPendingOpen);
+           !m_reconnectingIds.empty();
 }
 
 bool DeviceManager::IsDeviceBusy(winrt::hstring const& deviceId) const {
@@ -534,7 +534,8 @@ bool DeviceManager::IsDeviceBusy(winrt::hstring const& deviceId) const {
     auto iter = m_connections.find(deviceId);
     const bool hasConnection = iter != m_connections.end();
     const bool isOpen = hasConnection && iter->second.IsOpen;
-    return ((m_connectingIds.count(deviceId) > 0 || m_reconnectingIds.count(deviceId) > 0) && !isOpen) ||
+    return m_reconnectingIds.count(deviceId) > 0 ||
+           (m_connectingIds.count(deviceId) > 0 && !isOpen) ||
            (m_disconnectingIds.count(deviceId) > 0 && hasConnection);
 }
 
