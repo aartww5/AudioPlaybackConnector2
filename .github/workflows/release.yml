@@ -10,6 +10,13 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    env:
+      APPINSTALLER_URL: https://n0ahtm.github.io/AudioPlaybackConnector2/AudioPlaybackConnector2.appinstaller
 
     steps:
     - name: Checkout
@@ -82,13 +89,62 @@ jobs:
                 Where-Object { $_.Name -notmatch 'Dependencies' } |
                 Select-Object -First 1
         if (-not $file) { throw "MSIX not found" }
-        "PATH=$($file.FullName)" >> $env:GITHUB_OUTPUT
-        "NAME=$($file.Name)"     >> $env:GITHUB_OUTPUT
+        $assetName = "AudioPlaybackConnector2_${{ steps.version.outputs.VERSION }}_x64.msix"
+        $assetPath = Join-Path $env:RUNNER_TEMP $assetName
+        Copy-Item -LiteralPath $file.FullName -Destination $assetPath -Force
+        "PATH=$assetPath" >> $env:GITHUB_OUTPUT
+        "NAME=$assetName" >> $env:GITHUB_OUTPUT
+
+    - name: Generate App Installer feed
+      id: appinstaller
+      shell: pwsh
+      run: |
+        [xml]$manifest = Get-Content 'AudioPlaybackConnector2 (Package)/Package.appxmanifest' -Raw
+        $identity = $manifest.Package.Identity
+        [xml]$project = Get-Content 'AudioPlaybackConnector2 (Package)/AudioPlaybackConnector2 (Package).wapproj' -Raw
+        $namespaceManager = New-Object System.Xml.XmlNamespaceManager($project.NameTable)
+        $namespaceManager.AddNamespace('msb', 'http://schemas.microsoft.com/developer/msbuild/2003')
+        $hoursNode = $project.SelectSingleNode('//msb:HoursBetweenUpdateChecks', $namespaceManager)
+        if (-not $hoursNode) {
+          $hoursNode = $project.SelectSingleNode('//*[local-name()="HoursBetweenUpdateChecks"]')
+        }
+        $hoursBetweenUpdateChecks = if ($hoursNode -and -not [string]::IsNullOrWhiteSpace($hoursNode.InnerText)) {
+          $hoursNode.InnerText.Trim()
+        } else {
+          '24'
+        }
+        $msixUrl = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/${{ steps.msix.outputs.NAME }}"
+        $path = Join-Path $env:RUNNER_TEMP 'AudioPlaybackConnector2.appinstaller'
+
+        $content = @"
+        <?xml version="1.0" encoding="utf-8"?>
+        <AppInstaller
+            xmlns="http://schemas.microsoft.com/appx/appinstaller/2017/2"
+            xmlns:s4="http://schemas.microsoft.com/appx/appinstaller/2018"
+            Version="$($identity.Version)"
+            Uri="$env:APPINSTALLER_URL">
+          <MainPackage
+              Name="$($identity.Name)"
+              Publisher="$($identity.Publisher)"
+              Version="$($identity.Version)"
+              ProcessorArchitecture="x64"
+              Uri="$msixUrl" />
+          <UpdateSettings>
+            <OnLaunch HoursBetweenUpdateChecks="$hoursBetweenUpdateChecks" />
+            <s4:AutomaticBackgroundTask />
+          </UpdateSettings>
+        </AppInstaller>
+        "@
+
+        $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+        [System.IO.File]::WriteAllText($path, $content.TrimStart(), $utf8NoBom)
+        "PATH=$path" >> $env:GITHUB_OUTPUT
 
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
       with:
         name: v${{ steps.version.outputs.SEMVER }}
+        draft: true
         body: |
           See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for what's new.
 
@@ -99,20 +155,75 @@ jobs:
 
           If launch fails with `DEP0840` and mentions `MicrosoftCorporationII.WinAppRuntime.Main.2` or `MicrosoftCorporationII.WinAppRuntime.Singleton`, reinstall the runtime dependencies above.
 
-          **Installation:** Download both the `.cer` and `.msix` files from the assets below.
+          **Installation:** Download the `.cer` once and install through the `.appinstaller` file.
 
           1. Install the runtime dependencies listed above.
-          2. Install the certificate:
+          2. Install the certificate once:
              ```powershell
              Import-Certificate -FilePath ".\AudioPlaybackConnector2.cer" -CertStoreLocation "Cert:\LocalMachine\Root"
              ```
-          3. Install the MSIX package:
+          3. Install or update through App Installer:
              ```powershell
-             Add-AppxPackage -Path ".\${{ steps.msix.outputs.NAME }}"
+             Start-Process "ms-appinstaller:?source=${{ env.APPINSTALLER_URL }}"
              ```
+
+          If Windows does not open App Installer from the protocol link, download and open the `.appinstaller` asset directly. Direct MSIX sideloading remains available, but installing through the `.appinstaller` file enables Windows App Installer update checks.
 
           > Releases are signed with a self-signed certificate. A free open-source code-signing certificate has been requested but approval may take some time.
         files: |
           ${{ steps.msix.outputs.PATH }}
+          ${{ steps.appinstaller.outputs.PATH }}
           certs/AudioPlaybackConnector2.cer
         fail_on_unmatched_files: true
+
+    - name: Publish App Installer feed to GitHub Pages
+      shell: pwsh
+      run: |
+        New-Item -ItemType Directory -Path pages -Force | Out-Null
+        Copy-Item -LiteralPath '${{ steps.appinstaller.outputs.PATH }}' -Destination 'pages/AudioPlaybackConnector2.appinstaller' -Force
+
+    - name: Configure GitHub Pages
+      uses: actions/configure-pages@v5
+
+    - name: Upload GitHub Pages artifact
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: pages
+
+    - name: Deploy GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4
+
+    - name: Verify published App Installer feed
+      shell: pwsh
+      run: |
+        $expectedVersion = "${{ steps.version.outputs.VERSION }}"
+        $verified = $false
+
+        for ($attempt = 1; $attempt -le 6; $attempt++) {
+          try {
+            $response = Invoke-WebRequest -Uri $env:APPINSTALLER_URL -UseBasicParsing -TimeoutSec 30 -ErrorAction Stop
+            [xml]$feed = $response.Content
+            $actualVersion = $feed.DocumentElement.GetAttribute('Version')
+            if ($actualVersion -eq $expectedVersion) {
+              $verified = $true
+              break
+            }
+
+            Write-Warning "App Installer feed version is '$actualVersion', expected '$expectedVersion'."
+          } catch {
+            Write-Warning "App Installer feed check failed on attempt ${attempt}: $($_.Exception.Message)"
+          }
+
+          Start-Sleep -Seconds 10
+        }
+
+        if (-not $verified) {
+          throw "Published App Installer feed did not match version $expectedVersion."
+        }
+
+    - name: Publish GitHub Release
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: gh release edit "${{ github.ref_name }}" --repo "${{ github.repository }}" --draft=false

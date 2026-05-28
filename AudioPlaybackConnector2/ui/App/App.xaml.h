@@ -49,6 +49,7 @@ private:
     void SetupDeviceEvents();
     void TeardownDeviceEvents();
     void TryAutoReconnect();
+    winrt::fire_and_forget CheckForUpdatesOnStartupAsync();
     void SaveLastConnectedDevices();
     void HandlePowerSuspend();
     void HandlePowerResume();

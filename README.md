@@ -40,6 +40,8 @@ Inspired by the original [AudioPlaybackConnector](https://github.com/ysc3839/Aud
 - JSON-based settings persistence
 - Multi-language support
 - Optional startup with Windows (disabled by default)
+- Manual GitHub release update check in Settings
+- App Installer update feed for MSIX installs
 
 ---
 
@@ -84,7 +86,7 @@ Local builds use a temporary developer certificate, so no manual certificate ins
 
 ### Option 2: Install the Released MSIX Package (End Users)
 
-Each GitHub Release contains two files: a `.cer` certificate and a `.msix` package.
+Each GitHub Release contains a `.cer` certificate, an `.appinstaller` file, and a direct `.msix` package.
 
 **Step 1 — Install the Windows App SDK runtime dependencies**
 
@@ -100,11 +102,13 @@ Import-Certificate -FilePath ".\AudioPlaybackConnector2.cer" -CertStoreLocation 
 
 > **Note:** If you prefer to trust the certificate only for your user account, use `Cert:\CurrentUser\TrustedPeople` instead of `Cert:\LocalMachine\Root`.
 
-**Step 3 — Install the MSIX package**
+**Step 3 — Install through App Installer**
 
 ```powershell
-Add-AppxPackage -Path ".\AudioPlaybackConnector2.msix"
+Start-Process "ms-appinstaller:?source=https://n0ahtm.github.io/AudioPlaybackConnector2/AudioPlaybackConnector2.appinstaller"
 ```
+
+Installing through the `.appinstaller` feed lets Windows App Installer check for future updates. If Windows does not open App Installer from the protocol link, download and open the `.appinstaller` asset directly. Direct MSIX sideloading with `Add-AppxPackage` remains available as a fallback, but direct MSIX installs do not remember the update feed.
 
 After installation, start **AudioPlaybackConnector2** from the Start Menu.
 
@@ -149,6 +153,12 @@ Available actions:
 Auto-reconnect can be enabled globally and per device.
 
 When enabled, the app attempts to reconnect known devices automatically when they become available again.
+
+### Updates
+
+Use **Settings → Updates → Check for updates** to compare the installed app version with the latest GitHub Release. If a newer version is available, the app opens the App Installer feed so Windows can install the update.
+
+When installed through `AudioPlaybackConnector2.appinstaller`, Windows also checks the update feed on app launch at the configured interval.
 
 ---
 

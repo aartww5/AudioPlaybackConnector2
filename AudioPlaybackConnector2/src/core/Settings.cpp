@@ -22,6 +22,14 @@ winrt::hstring GetOptionalString(winrt::Windows::Data::Json::JsonObject const& j
                : fallback;
 }
 
+int64_t GetOptionalInt64(winrt::Windows::Data::Json::JsonObject const& json, winrt::hstring const& key, int64_t fallback) {
+    if (!json.HasKey(key)) return fallback;
+    auto value = json.Lookup(key);
+    return value.ValueType() == winrt::Windows::Data::Json::JsonValueType::Number
+               ? static_cast<int64_t>(value.GetNumber())
+               : fallback;
+}
+
 winrt::Windows::Data::Json::JsonArray GetOptionalArray(winrt::Windows::Data::Json::JsonObject const& json, winrt::hstring const& key) {
     if (!json.HasKey(key)) return nullptr;
     auto value = json.Lookup(key);
@@ -58,11 +66,15 @@ void Settings::Load(HINSTANCE hInst) {
         bool globalAutoReconnect = false;
         bool startWithWindows = false;
         std::wstring language = L"system";
+        int64_t lastUpdateCheckUnixSeconds = 0;
+        std::wstring lastNotifiedUpdateVersion;
         std::vector<DeviceSettings> devices;
         std::vector<std::wstring> lastConnectedIds;
 
         globalAutoReconnect = GetOptionalBoolean(json, L"globalAutoReconnect", globalAutoReconnect);
         startWithWindows = GetOptionalBoolean(json, L"startWithWindows", startWithWindows);
+        lastUpdateCheckUnixSeconds = GetOptionalInt64(json, L"lastUpdateCheckUnixSeconds", lastUpdateCheckUnixSeconds);
+        lastNotifiedUpdateVersion = GetOptionalString(json, L"lastNotifiedUpdateVersion", L"");
 
         {
             auto lang = GetOptionalString(json, L"language", L"system");
@@ -99,6 +111,8 @@ void Settings::Load(HINSTANCE hInst) {
         m_data.GlobalAutoReconnect = globalAutoReconnect;
         m_data.StartWithWindows = startWithWindows;
         m_data.Language = std::move(language);
+        m_data.LastUpdateCheckUnixSeconds = lastUpdateCheckUnixSeconds;
+        m_data.LastNotifiedUpdateVersion = std::move(lastNotifiedUpdateVersion);
         m_data.Devices = std::move(devices);
         m_data.LastConnectedIds = std::move(lastConnectedIds);
     } catch (winrt::hresult_error const& ex) {
@@ -122,6 +136,8 @@ void Settings::Save(HINSTANCE hInst) {
         json.Insert(L"globalAutoReconnect", winrt::Windows::Data::Json::JsonValue::CreateBooleanValue(snapshot.GlobalAutoReconnect));
         json.Insert(L"startWithWindows", winrt::Windows::Data::Json::JsonValue::CreateBooleanValue(snapshot.StartWithWindows));
         json.Insert(L"language", winrt::Windows::Data::Json::JsonValue::CreateStringValue(snapshot.Language));
+        json.Insert(L"lastUpdateCheckUnixSeconds", winrt::Windows::Data::Json::JsonValue::CreateNumberValue(static_cast<double>(snapshot.LastUpdateCheckUnixSeconds)));
+        json.Insert(L"lastNotifiedUpdateVersion", winrt::Windows::Data::Json::JsonValue::CreateStringValue(snapshot.LastNotifiedUpdateVersion));
 
         winrt::Windows::Data::Json::JsonArray devArr;
         for (const auto& d : snapshot.Devices) {

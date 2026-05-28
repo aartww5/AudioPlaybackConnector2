@@ -43,13 +43,13 @@
     <DefaultLanguage>de-DE</DefaultLanguage>
     <AppxPackageSigningEnabled>True</AppxPackageSigningEnabled>
     <EntryPointProjectUniqueName>..\AudioPlaybackConnector2\AudioPlaybackConnector2.vcxproj</EntryPointProjectUniqueName>
-    <GenerateAppInstallerFile>False</GenerateAppInstallerFile>
+    <GenerateAppInstallerFile>True</GenerateAppInstallerFile>
     <AppxPackageSigningTimestampDigestAlgorithm>SHA256</AppxPackageSigningTimestampDigestAlgorithm>
     <AppxAutoIncrementPackageRevision>False</AppxAutoIncrementPackageRevision>
     <GenerateTestArtifacts>True</GenerateTestArtifacts>
     <AppxBundlePlatforms>x86|x64|arm64</AppxBundlePlatforms>
-    <AppInstallerUri>https://github.com/N0ahTM/AudioPlaybackConnector2/releases</AppInstallerUri>
-    <HoursBetweenUpdateChecks>168</HoursBetweenUpdateChecks>
+    <AppInstallerUri>https://n0ahtm.github.io/AudioPlaybackConnector2/AudioPlaybackConnector2.appinstaller</AppInstallerUri>
+    <HoursBetweenUpdateChecks>72</HoursBetweenUpdateChecks>
     <PackageCertificateThumbprint>CFF0DF8009F8FF2F844F9B733571C1A1E577FB9C</PackageCertificateThumbprint>
     <GenerateTemporaryStoreCertificate>True</GenerateTemporaryStoreCertificate>
   </PropertyGroup>

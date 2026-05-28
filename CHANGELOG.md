@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-05-28
+
+### Added
+- Manual update checks in Settings using the GitHub Releases API, with WinUI status feedback and App Installer launch support.
+- Cached startup update checks with an update-available notification that opens the App Installer feed.
+- App Installer feed generation and GitHub Pages publishing in the release workflow so MSIX installs can receive App Installer updates.
+- Device busy/activity state tracking so the tray icon and device picker can reflect ongoing connect, reconnect, and disconnect operations.
+- Double-click tray icon behavior to toggle the most recently connected device.
+
+### Changed
+- Release assets now include a stable `.appinstaller` feed alongside the signed MSIX and public certificate.
+- Release publishing now keeps the GitHub Release as a draft until the GitHub Pages App Installer feed has been deployed and verified.
+- Improved notification status management so stale status notifications are replaced more consistently and tray balloon fallback remains available.
+- Device picker rows now refresh busy state more reliably and avoid enabling actions while a device operation is already running.
+
+### Fixed
+- Replaced cached `DeviceInformation` objects with ID-only string storage to avoid lifetime issues after device changes.
+- Improved device cache compatibility by storing device IDs as `std::wstring`.
+- Fixed tray visual refresh and busy-state checks so the tray icon returns to the correct state after background device operations.
+
 ## [0.4.2] - 2026-05-26
 
 ### Added
@@ -129,7 +149,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Multi-language support for 8 locales: English, German, French, Spanish, Japanese, Korean, Chinese Simplified, Chinese Traditional.
 - CI/CD workflows: build (with clang-format and CppCheck), CodeQL analysis, and automated MSIX releases on version tags.
 
-[Unreleased]: https://github.com/N0ahTM/AudioPlaybackConnector2/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/N0ahTM/AudioPlaybackConnector2/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/N0ahTM/AudioPlaybackConnector2/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/N0ahTM/AudioPlaybackConnector2/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/N0ahTM/AudioPlaybackConnector2/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/N0ahTM/AudioPlaybackConnector2/compare/v0.3.0...v0.4.0

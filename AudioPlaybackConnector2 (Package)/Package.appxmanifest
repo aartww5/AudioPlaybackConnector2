@@ -9,9 +9,9 @@
   IgnorableNamespaces="uap rescap desktop com">
 
   <Identity
-    Name="12144NoahMeyer.AudioPlaybackConnector2"
+    Name="N0ahTM.AudioPlaybackConnector2"
     Publisher="CN=AudioPlaybackConnector2"
-    Version="0.4.1.0" />
+    Version="0.5.0.0" />
 
   <Properties>
     <DisplayName>AudioPlaybackConnector2</DisplayName>
@@ -61,6 +61,7 @@
   </Applications>
 
   <Capabilities>
+    <Capability Name="internetClient" />
     <rescap:Capability Name="runFullTrust" />
   </Capabilities>
 </Package>

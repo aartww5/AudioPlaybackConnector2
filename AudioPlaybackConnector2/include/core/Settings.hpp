@@ -14,6 +14,8 @@ struct SettingsData {
     bool GlobalAutoReconnect = false;
     bool StartWithWindows = false;
     std::wstring Language = L"system";
+    int64_t LastUpdateCheckUnixSeconds = 0;
+    std::wstring LastNotifiedUpdateVersion;
     std::vector<DeviceSettings> Devices;
     std::vector<std::wstring> LastConnectedIds;
 };

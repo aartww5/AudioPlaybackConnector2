@@ -11,6 +11,7 @@
 #include <core/DeviceManager.hpp>
 #include <core/StringResources.hpp>
 #include <core/ThemeHelper.hpp>
+#include <services/UpdateService.hpp>
 #include <util/Util.hpp>
 
 using namespace winrt;
@@ -30,6 +31,22 @@ std::wstring BuildVersionText() {
     } catch (...) {
         return label;
     }
+}
+
+std::wstring ReplacePlaceholders(std::wstring_view templateStr, std::wstring_view replacement) {
+    std::wstring result;
+    size_t pos = 0;
+    while (pos < templateStr.size()) {
+        auto found = templateStr.find(L"{0}", pos);
+        if (found == std::wstring_view::npos) {
+            result.append(templateStr.substr(pos));
+            break;
+        }
+        result.append(templateStr.substr(pos, found - pos));
+        result.append(replacement);
+        pos = found + 3;
+    }
+    return result;
 }
 } // namespace
 
@@ -60,6 +77,11 @@ void SettingsWindow::RootGrid_Loaded(IInspectable const&, RoutedEventArgs const&
     AppHeader().Text(winrt::hstring(_("Settings_App")));
     VersionText().Text(winrt::hstring(BuildVersionText()));
     CopyrightText().Text(winrt::hstring(_("About_Copyright")));
+    UpdatesHeader().Text(winrt::hstring(_("Settings_Updates")));
+    CheckForUpdatesLabel().Text(winrt::hstring(_("Settings_CheckForUpdates")));
+    CheckForUpdatesDesc().Text(winrt::hstring(_("Settings_CheckForUpdates_Desc")));
+    CheckForUpdatesButton().Content(box_value(winrt::hstring(_("Settings_CheckForUpdates_Button"))));
+    OpenAppInstallerButton().Content(box_value(winrt::hstring(_("Settings_OpenAppInstaller"))));
 
     auto app = App::GetInstance();
     if (!app) return;
@@ -161,6 +183,67 @@ void SettingsWindow::StartWithWindowsToggle_Toggled(IInspectable const& sender, 
     if (m_suppressStartupToggle) return;
     auto toggle = sender.as<ToggleSwitch>();
     ApplyStartWithWindowsAsync(toggle.IsOn());
+}
+
+void SettingsWindow::CheckForUpdatesButton_Click(IInspectable const&, RoutedEventArgs const&) {
+    RunManualUpdateCheckAsync();
+}
+
+void SettingsWindow::OpenAppInstallerButton_Click(IInspectable const&, RoutedEventArgs const&) {
+    UpdateService::LaunchAppInstallerAsync();
+}
+
+winrt::fire_and_forget SettingsWindow::RunManualUpdateCheckAsync() {
+    auto lifetime = get_strong();
+    auto requestId = ++m_updateCheckRequestId;
+    SetUpdateCheckBusy(true);
+
+    winrt::apartment_context ui;
+    co_await winrt::resume_background();
+    auto result = UpdateService::CheckForUpdates();
+    co_await ui;
+
+    if (requestId != m_updateCheckRequestId.load()) co_return;
+    SetUpdateCheckBusy(false);
+    ShowUpdateCheckResult(result);
+}
+
+void SettingsWindow::SetUpdateCheckBusy(bool busy) {
+    CheckForUpdatesButton().IsEnabled(!busy);
+    UpdateCheckProgress().IsActive(busy);
+    UpdateCheckProgress().Visibility(busy ? Visibility::Visible : Visibility::Collapsed);
+    if (busy) {
+        OpenAppInstallerButton().Visibility(Visibility::Collapsed);
+        UpdateInfoBar().IsOpen(false);
+    }
+}
+
+void SettingsWindow::ShowUpdateCheckResult(UpdateCheckResult const& result) {
+    OpenAppInstallerButton().Visibility(Visibility::Collapsed);
+
+    switch (result.Status) {
+        case UpdateCheckStatus::UpdateAvailable:
+            UpdateInfoBar().Severity(InfoBarSeverity::Informational);
+            UpdateInfoBar().Title(winrt::hstring(_("Settings_UpdateAvailable_Title")));
+            UpdateInfoBar().Message(winrt::hstring(ReplacePlaceholders(_("Settings_UpdateAvailable_Message"), result.LatestVersion)));
+            OpenAppInstallerButton().Visibility(Visibility::Visible);
+            break;
+        case UpdateCheckStatus::UpToDate:
+            UpdateInfoBar().Severity(InfoBarSeverity::Success);
+            UpdateInfoBar().Title(winrt::hstring(_("Settings_UpdateCurrent_Title")));
+            UpdateInfoBar().Message(winrt::hstring(_("Settings_UpdateCurrent_Message")));
+            break;
+        case UpdateCheckStatus::Failed:
+        default:
+            UpdateInfoBar().Severity(InfoBarSeverity::Error);
+            UpdateInfoBar().Title(winrt::hstring(_("Settings_UpdateFailed_Title")));
+            UpdateInfoBar().Message(result.ErrorMessage.empty()
+                                        ? winrt::hstring(_("Settings_UpdateFailed_Message"))
+                                        : winrt::hstring(result.ErrorMessage));
+            break;
+    }
+
+    UpdateInfoBar().IsOpen(true);
 }
 
 /*------------------------------------------------------------------------------------------------------------------*/

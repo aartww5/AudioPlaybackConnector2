@@ -1,6 +1,7 @@
 #include <pch.h>
 #include <services/NotificationService.hpp>
 #include <core/StringResources.hpp>
+#include <services/UpdateService.hpp>
 #include <util/Util.hpp>
 
 #include <utility>
@@ -51,8 +52,12 @@ std::wstring XmlEscape(std::wstring_view value) {
     return result;
 }
 
-winrt::hstring ToastArguments(std::wstring_view action, winrt::hstring const& deviceId) {
-    return winrt::hstring(L"action=") + winrt::hstring(action) + L"&deviceId=" + winrt::Windows::Foundation::Uri::EscapeComponent(deviceId);
+winrt::hstring ToastArguments(std::wstring_view action, winrt::hstring const& deviceId = {}) {
+    auto arguments = winrt::hstring(L"action=") + winrt::Windows::Foundation::Uri::EscapeComponent(winrt::hstring(action));
+    if (!deviceId.empty()) {
+        arguments = arguments + L"&deviceId=" + winrt::Windows::Foundation::Uri::EscapeComponent(deviceId);
+    }
+    return arguments;
 }
 
 std::wstring UrlDecodeComponent(std::wstring_view value) {
@@ -284,10 +289,13 @@ bool NotificationService::IsStatusNotificationGenerationCurrent(uint64_t generat
 winrt::fire_and_forget NotificationService::ShowToastOrFallbackAsync(std::wstring xml,
                                                                      winrt::hstring group,
                                                                      winrt::hstring tag,
+                                                                     // cppcheck-suppress passedByValue
                                                                      std::vector<winrt::hstring> tagsToRemove,
                                                                      uint64_t generation,
                                                                      winrt::Windows::Foundation::DateTime expiration,
+                                                                     // cppcheck-suppress passedByValue
                                                                      std::wstring fallbackTitle,
+                                                                     // cppcheck-suppress passedByValue
                                                                      std::wstring fallbackBody,
                                                                      FallbackNotificationType fallbackType) {
     auto lifetime = shared_from_this();
@@ -452,6 +460,24 @@ void NotificationService::ShowAutoReconnectFailed(winrt::hstring const& id, winr
                               FallbackNotificationType::Error);
 }
 
+void NotificationService::ShowUpdateAvailable(std::wstring const& latestVersion) {
+    auto title = NotificationText("Notification_UpdateAvailable_Title", latestVersion);
+    auto body = NotificationText("Notification_UpdateAvailable_Body");
+    auto xml = BuildToastXml(title,
+                             body,
+                             L"",
+                             NotificationText("Notification_UpdateAvailable_Action"),
+                             ToastArguments(L"openUpdate"),
+                             L"ms-appx:///Images/ToastInfo.png",
+                             L"<audio silent=\"true\"/>");
+
+    ShowStatusToastOrFallback(xml,
+                              ExpirationFromNow(std::chrono::hours(6)),
+                              std::wstring(_("AppName")),
+                              title,
+                              FallbackNotificationType::Info);
+}
+
 /*------------------------------------------------------------------------------------------------------------------*/
 /*//////// Event Handler //////////////////////////////////////////////////////////////////////////////////////////*/
 /*------------------------------------------------------------------------------------------------------------------*/
@@ -468,6 +494,12 @@ void NotificationService::OnNotificationInvoked(AppNotifications::AppNotificatio
         auto parsedArguments = ParseToastArgumentString(args.Argument());
         auto action = FindToastArgument(parsedArguments, L"action");
         auto deviceId = FindToastArgument(parsedArguments, L"deviceId");
+
+        if (action && *action == L"openUpdate") {
+            DebugTrace(L"[NotificationService] App notification invoked: action=openUpdate");
+            UpdateService::LaunchAppInstallerAsync();
+            return;
+        }
 
         if (!deviceId) {
             DebugTrace(L"[NotificationService] App notification invoked without deviceId: {0}", std::wstring(args.Argument()));

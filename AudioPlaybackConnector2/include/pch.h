@@ -34,6 +34,8 @@
 #include <format>
 #include <limits>
 #include <tuple>
+#include <array>
+#include <chrono>
 
 #ifndef _DEBUG
 #define RESULT_DIAGNOSTICS_LEVEL 1
@@ -63,6 +65,8 @@
 #include <winrt/Windows.UI.Core.h>
 #include <winrt/Windows.UI.Text.h>
 #include <winrt/Windows.UI.Popups.h>
+#include <winrt/Windows.Web.Http.h>
+#include <winrt/Windows.Web.Http.Headers.h>
 
 #include <winrt/Microsoft.UI.h>
 #include <winrt/Microsoft.UI.Content.h>
