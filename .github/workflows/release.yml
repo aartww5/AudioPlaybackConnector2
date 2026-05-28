@@ -160,7 +160,7 @@ jobs:
       run: >
         ./scripts/release/verify-appinstaller-feed.ps1
         -AppInstallerUrl '${{ env.APPINSTALLER_URL }}'
-        -ExpectedVersion '${{ needs.build-release.outputs.version }}'
+        -ExpectedPackageVersion '${{ needs.build-release.outputs.version }}'
 
     - name: Publish GitHub Release
       env:

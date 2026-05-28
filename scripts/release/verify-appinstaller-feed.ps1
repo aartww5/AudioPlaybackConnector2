@@ -3,7 +3,7 @@ param(
     [string]$AppInstallerUrl,
 
     [Parameter(Mandatory = $true)]
-    [string]$ExpectedVersion,
+    [string]$ExpectedPackageVersion,
 
     [int]$Attempts = 6,
     [int]$DelaySeconds = 10,
@@ -23,13 +23,20 @@ for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
         }
 
         [xml]$feed = $content
-        $actualVersion = $feed.DocumentElement.GetAttribute("Version")
-        if ($actualVersion -eq $ExpectedVersion) {
+        $appInstallerVersion = $feed.DocumentElement.GetAttribute("Version")
+        $packageNode = $feed.DocumentElement.GetElementsByTagName("MainPackage", $feed.DocumentElement.NamespaceURI)[0]
+        if (-not $packageNode) {
+            throw "MainPackage element not found."
+        }
+
+        $actualPackageVersion = $packageNode.GetAttribute("Version")
+        $appInstallerMajor = [uint64]($appInstallerVersion.Split(".")[0])
+        if ($appInstallerMajor -gt 0 -and $actualPackageVersion -eq $ExpectedPackageVersion) {
             $verified = $true
             break
         }
 
-        Write-Warning "App Installer feed version is '$actualVersion', expected '$ExpectedVersion'."
+        Write-Warning "App Installer feed version is '$appInstallerVersion' and package version is '$actualPackageVersion', expected package '$ExpectedPackageVersion' with non-zero AppInstaller major version."
     } catch {
         Write-Warning "App Installer feed check failed on attempt ${attempt}: $($_.Exception.Message)"
     }
@@ -40,7 +47,7 @@ for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
 }
 
 if (-not $verified) {
-    throw "Published App Installer feed did not match version $ExpectedVersion."
+    throw "Published App Installer feed did not match package version $ExpectedPackageVersion."
 }
 
-Write-Host "App Installer feed verified: $AppInstallerUrl -> $ExpectedVersion"
+Write-Host "App Installer feed verified: $AppInstallerUrl -> $ExpectedPackageVersion"
