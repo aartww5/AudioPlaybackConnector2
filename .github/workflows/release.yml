@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v[0-9]*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to publish, for example v0.5.0.
+        required: true
+        type: string
 
 env:
   APPINSTALLER_URL: https://n0ahtm.github.io/AudioPlaybackConnector2/AudioPlaybackConnector2.appinstaller
@@ -16,6 +22,7 @@ jobs:
       pages: write
     outputs:
       semver: ${{ steps.version.outputs.SEMVER }}
+      tag: ${{ steps.version.outputs.TAG }}
       version: ${{ steps.version.outputs.VERSION }}
 
     steps:
@@ -26,8 +33,18 @@ jobs:
       id: version
       shell: pwsh
       run: |
-        $semver = "${{ github.ref_name }}".TrimStart('v')
+        $tag = if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+          "${{ inputs.tag }}"
+        } else {
+          "${{ github.ref_name }}"
+        }
+        if ($tag -notmatch '^v\d+\.\d+\.\d+$') {
+          throw "Release tag must look like v0.5.0."
+        }
+
+        $semver = $tag.TrimStart('v')
         $quad = "$semver.0"
+        "TAG=$tag" >> $env:GITHUB_OUTPUT
         "SEMVER=$semver" >> $env:GITHUB_OUTPUT
         "VERSION=$quad" >> $env:GITHUB_OUTPUT
 
@@ -71,7 +88,7 @@ jobs:
       id: appinstaller
       shell: pwsh
       run: |
-        $msixUrl = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/${{ steps.msix.outputs.NAME }}"
+        $msixUrl = "https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.TAG }}/${{ steps.msix.outputs.NAME }}"
         $outputPath = Join-Path $env:RUNNER_TEMP 'AudioPlaybackConnector2.appinstaller'
         ./scripts/release/generate-appinstaller.ps1 `
           -MsixUrl $msixUrl `
@@ -81,8 +98,10 @@ jobs:
     - name: Create draft GitHub Release
       uses: softprops/action-gh-release@v2
       with:
+        tag_name: ${{ steps.version.outputs.TAG }}
         name: v${{ steps.version.outputs.SEMVER }}
         draft: true
+        overwrite_files: true
         body: |
           See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for what's new.
 
@@ -165,4 +184,4 @@ jobs:
     - name: Publish GitHub Release
       env:
         GH_TOKEN: ${{ github.token }}
-      run: gh release edit "${{ github.ref_name }}" --repo "${{ github.repository }}" --draft=false
+      run: gh release edit "${{ needs.build-release.outputs.tag }}" --repo "${{ github.repository }}" --draft=false

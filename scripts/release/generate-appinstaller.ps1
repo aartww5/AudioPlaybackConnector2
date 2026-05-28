@@ -32,22 +32,9 @@ function Get-HoursBetweenUpdateChecks {
     return "24"
 }
 
-function Get-AppInstallerVersion {
-    param([string]$PackageVersion)
-
-    $parts = $PackageVersion.Split(".")
-    if ($parts.Count -ne 4 -or ($parts | Where-Object { $_ -notmatch "^\d+$" })) {
-        throw "Package version must be a four-part version, for example 0.5.0.0."
-    }
-
-    $major = [uint64]$parts[0] + 1
-    return "$major.$($parts[1]).$($parts[2]).$($parts[3])"
-}
-
 [xml]$manifest = [System.IO.File]::ReadAllText($ManifestPath)
 $identity = $manifest.Package.Identity
 $hoursBetweenUpdateChecks = Get-HoursBetweenUpdateChecks -Path $PackageProjectPath
-$appInstallerVersion = Get-AppInstallerVersion -PackageVersion $identity.Version
 
 $outputDirectory = Split-Path -Parent $OutputPath
 if (-not [string]::IsNullOrWhiteSpace($outputDirectory)) {
@@ -55,7 +42,6 @@ if (-not [string]::IsNullOrWhiteSpace($outputDirectory)) {
 }
 
 $appInstallerNs = "http://schemas.microsoft.com/appx/appinstaller/2017/2"
-$s4Ns = "http://schemas.microsoft.com/appx/appinstaller/2018"
 $settings = [System.Xml.XmlWriterSettings]::new()
 $settings.Encoding = [System.Text.UTF8Encoding]::new($false)
 $settings.Indent = $true
@@ -64,8 +50,7 @@ $writer = [System.Xml.XmlWriter]::Create($OutputPath, $settings)
 try {
     $writer.WriteStartDocument()
     $writer.WriteStartElement("AppInstaller", $appInstallerNs)
-    $writer.WriteAttributeString("xmlns", "s4", $null, $s4Ns)
-    $writer.WriteAttributeString("Version", $appInstallerVersion)
+    $writer.WriteAttributeString("Version", $identity.Version)
     $writer.WriteAttributeString("Uri", $AppInstallerUrl)
 
     $writer.WriteStartElement("MainPackage", $appInstallerNs)
@@ -79,8 +64,6 @@ try {
     $writer.WriteStartElement("UpdateSettings", $appInstallerNs)
     $writer.WriteStartElement("OnLaunch", $appInstallerNs)
     $writer.WriteAttributeString("HoursBetweenUpdateChecks", $hoursBetweenUpdateChecks)
-    $writer.WriteEndElement()
-    $writer.WriteStartElement("s4", "AutomaticBackgroundTask", $s4Ns)
     $writer.WriteEndElement()
     $writer.WriteEndElement()
 
@@ -96,7 +79,7 @@ if ($env:GITHUB_OUTPUT) {
 
 [pscustomobject]@{
     Path = $OutputPath
-    Version = $appInstallerVersion
+    Version = $identity.Version
     PackageVersion = $identity.Version
     Name = $identity.Name
     Publisher = $identity.Publisher

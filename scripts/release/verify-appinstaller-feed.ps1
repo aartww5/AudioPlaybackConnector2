@@ -30,13 +30,12 @@ for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
         }
 
         $actualPackageVersion = $packageNode.GetAttribute("Version")
-        $appInstallerMajor = [uint64]($appInstallerVersion.Split(".")[0])
-        if ($appInstallerMajor -gt 0 -and $actualPackageVersion -eq $ExpectedPackageVersion) {
+        if ($appInstallerVersion -eq $ExpectedPackageVersion -and $actualPackageVersion -eq $ExpectedPackageVersion) {
             $verified = $true
             break
         }
 
-        Write-Warning "App Installer feed version is '$appInstallerVersion' and package version is '$actualPackageVersion', expected package '$ExpectedPackageVersion' with non-zero AppInstaller major version."
+        Write-Warning "App Installer feed version is '$appInstallerVersion' and package version is '$actualPackageVersion', expected '$ExpectedPackageVersion'."
     } catch {
         Write-Warning "App Installer feed check failed on attempt ${attempt}: $($_.Exception.Message)"
     }
