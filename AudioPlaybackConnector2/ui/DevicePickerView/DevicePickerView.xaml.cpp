@@ -42,7 +42,7 @@ void DevicePickerView::Initialize(std::shared_ptr<DeviceManager> manager,
                                   std::function<void(winrt::hstring)> onDeviceSelected,
                                   std::function<void(winrt::hstring)> onDeviceDisconnect,
                                   std::function<void(winrt::hstring)> onDeviceReconnect) {
-    m_manager = manager;
+    m_viewModel.SetDeviceManager(manager);
     m_onClose = std::move(onClose);
     m_onDeviceSelected = std::move(onDeviceSelected);
     m_onDeviceDisconnect = std::move(onDeviceDisconnect);
@@ -218,11 +218,7 @@ void DevicePickerView::ApplyDeviceResults(
     ProgressIndicator().IsActive(false);
     ProgressIndicator().Visibility(Visibility::Collapsed);
 
-    m_devices.clear();
-    m_devices.reserve(devices.Size());
-    for (auto const& dev : devices) {
-        m_devices.push_back(dev);
-    }
+    m_viewModel.SetDevices(devices);
     RebuildDeviceListFromCache();
     m_isLoadingDevices.store(false);
     m_activeLoadRequestId.store(0);
@@ -245,7 +241,7 @@ void DevicePickerView::RebuildDeviceListFromCache() {
     DeviceList().SelectedItem(nullptr);
     DeviceList().Items().Clear();
 
-    if (m_devices.empty()) {
+    if (m_viewModel.Empty()) {
         auto emptyMsg = TextBlock();
         emptyMsg.Text(winrt::hstring(_("TrayMenu_NoDevices")));
         auto brush = Application::Current().Resources().TryLookup(box_value(L"TextFillColorSecondaryBrush"));
@@ -256,8 +252,8 @@ void DevicePickerView::RebuildDeviceListFromCache() {
         }
         DeviceList().Items().Append(emptyMsg);
     } else {
-        for (auto const& dev : m_devices) {
-            DeviceList().Items().Append(BuildDeviceListItem(dev));
+        for (auto const& device : m_viewModel.SnapshotItems()) {
+            DeviceList().Items().Append(BuildDeviceListItem(device));
         }
     }
 
@@ -265,14 +261,14 @@ void DevicePickerView::RebuildDeviceListFromCache() {
     m_suppressSelectionChanged.store(false);
 }
 
-ListViewItem DevicePickerView::BuildDeviceListItem(winrt::Windows::Devices::Enumeration::DeviceInformation const& dev) {
+ListViewItem DevicePickerView::BuildDeviceListItem(DevicePickerItemViewModel const& device) {
     auto item = ListViewItem();
     auto grid = Grid();
     grid.ColumnDefinitions().Append(ColumnDefinition());
     grid.ColumnDefinitions().Append(ColumnDefinition());
 
     auto nameTb = TextBlock();
-    nameTb.Text(dev.Name());
+    nameTb.Text(device.Name);
     nameTb.VerticalAlignment(VerticalAlignment::Center);
     Grid::SetColumn(nameTb, 0);
 
@@ -283,20 +279,7 @@ ListViewItem DevicePickerView::BuildDeviceListItem(winrt::Windows::Devices::Enum
     infoPanel.Spacing(6);
     Grid::SetColumn(infoPanel, 1);
 
-    auto manager = m_manager.lock();
-    bool isConnected = false;
-    bool isBusy = false;
-    if (manager) {
-        for (const auto& c : manager->GetConnectedDevices()) {
-            if (c.Device.Id() == dev.Id()) {
-                isConnected = true;
-                break;
-            }
-        }
-        isBusy = manager->IsDeviceBusy(dev.Id());
-    }
-
-    if (isBusy) {
+    if (device.IsBusy) {
         item.IsEnabled(false);
         item.Opacity(0.6);
 
@@ -308,8 +291,8 @@ ListViewItem DevicePickerView::BuildDeviceListItem(winrt::Windows::Devices::Enum
         infoPanel.Children().Append(busyRing);
     }
 
-    if (isConnected) {
-        auto devId = dev.Id();
+    if (device.IsConnected) {
+        auto devId = device.Id;
         auto onReconnect = m_onDeviceReconnect;
         auto onDisconnect = m_onDeviceDisconnect;
 
@@ -318,7 +301,7 @@ ListViewItem DevicePickerView::BuildDeviceListItem(winrt::Windows::Devices::Enum
         reconnectBtn.BorderThickness({0});
         reconnectBtn.Padding({5, 1, 5, 1});
         reconnectBtn.VerticalAlignment(VerticalAlignment::Center);
-        reconnectBtn.IsEnabled(!isBusy);
+        reconnectBtn.IsEnabled(!device.IsBusy);
 
         auto reconnectText = TextBlock();
         reconnectText.Text(winrt::hstring(_("Reconnect")));
@@ -336,7 +319,7 @@ ListViewItem DevicePickerView::BuildDeviceListItem(winrt::Windows::Devices::Enum
         disconnectBtn.BorderThickness({0});
         disconnectBtn.Padding({5, 1, 5, 1});
         disconnectBtn.VerticalAlignment(VerticalAlignment::Center);
-        disconnectBtn.IsEnabled(!isBusy);
+        disconnectBtn.IsEnabled(!device.IsBusy);
 
         auto disconnectText = TextBlock();
         disconnectText.Text(winrt::hstring(_("Disconnect")));
@@ -356,7 +339,7 @@ ListViewItem DevicePickerView::BuildDeviceListItem(winrt::Windows::Devices::Enum
     grid.Children().Append(nameTb);
     grid.Children().Append(infoPanel);
     item.Content(grid);
-    item.Tag(box_value(dev.Id()));
+    item.Tag(box_value(device.Id));
     return item;
 }
 
@@ -384,13 +367,7 @@ void DevicePickerView::OnDeviceSelected(winrt::Windows::Foundation::IInspectable
     auto id = unbox_value<winrt::hstring>(tag);
     if (id.empty()) return;
 
-    auto manager = m_manager.lock();
-    if (manager) {
-        if (manager->IsDeviceBusy(id)) return;
-        for (const auto& c : manager->GetConnectedDevices()) {
-            if (c.Device.Id() == id) return;
-        }
-    }
+    if (!m_viewModel.CanSelect(id)) return;
 
     if (m_onDeviceSelected) {
         m_onDeviceSelected(id);

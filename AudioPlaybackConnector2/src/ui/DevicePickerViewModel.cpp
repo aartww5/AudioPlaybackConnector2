@@ -1,0 +1,68 @@
+#include <pch.h>
+
+#include <ui/DevicePickerViewModel.hpp>
+
+#include <core/DeviceManager.hpp>
+
+/*------------------------------------------------------------------------------------------------------------*/
+/*//////// Public Interface //////////////////////////////////////////////////////////////////////////////////*/
+/*------------------------------------------------------------------------------------------------------------*/
+
+void DevicePickerViewModel::SetDeviceManager(std::weak_ptr<DeviceManager> manager) {
+    m_manager = std::move(manager);
+}
+
+void DevicePickerViewModel::SetDevices(
+    winrt::Windows::Devices::Enumeration::DeviceInformationCollection const& devices) {
+    m_devices.clear();
+    m_devices.reserve(devices.Size());
+    for (auto const& device : devices) {
+        m_devices.push_back(device);
+    }
+}
+
+bool DevicePickerViewModel::Empty() const noexcept {
+    return m_devices.empty();
+}
+
+std::vector<DevicePickerItemViewModel> DevicePickerViewModel::SnapshotItems() const {
+    std::vector<DevicePickerItemViewModel> items;
+    items.reserve(m_devices.size());
+    for (auto const& device : m_devices) {
+        auto id = device.Id();
+        items.push_back({
+            .Id = id,
+            .Name = device.Name(),
+            .IsConnected = IsConnected(id),
+            .IsBusy = IsBusy(id),
+        });
+    }
+    return items;
+}
+
+bool DevicePickerViewModel::CanSelect(winrt::hstring const& id) const {
+    if (id.empty()) return false;
+    if (IsBusy(id)) return false;
+    return !IsConnected(id);
+}
+
+/*------------------------------------------------------------------------------------------------------------*/
+/*//////// Helpers ///////////////////////////////////////////////////////////////////////////////////////////*/
+/*------------------------------------------------------------------------------------------------------------*/
+
+bool DevicePickerViewModel::IsConnected(winrt::hstring const& id) const {
+    auto manager = m_manager.lock();
+    if (!manager) return false;
+
+    for (const auto& connection : manager->GetConnectedDevices()) {
+        if (connection.Device.Id() == id) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool DevicePickerViewModel::IsBusy(winrt::hstring const& id) const {
+    auto manager = m_manager.lock();
+    return manager && manager->IsDeviceBusy(id);
+}

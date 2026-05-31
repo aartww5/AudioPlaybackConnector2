@@ -1,8 +1,8 @@
 #pragma once
 
 #include <DevicePickerView.g.h>
+#include <ui/DevicePickerViewModel.hpp>
 #include <mutex>
-#include <vector>
 
 class DeviceManager;
 
@@ -41,10 +41,9 @@ private:
                             uint64_t requestId);
     void OnDeviceEnumerationFailed(bool listWasEmpty, uint64_t requestId);
     void RebuildDeviceListFromCache();
-    winrt::Microsoft::UI::Xaml::Controls::ListViewItem
-    BuildDeviceListItem(winrt::Windows::Devices::Enumeration::DeviceInformation const& dev);
+    winrt::Microsoft::UI::Xaml::Controls::ListViewItem BuildDeviceListItem(DevicePickerItemViewModel const& device);
 
-    std::weak_ptr<DeviceManager> m_manager;
+    DevicePickerViewModel m_viewModel;
     std::function<void()> m_onClose;
     std::function<void(winrt::hstring)> m_onDeviceSelected;
     std::function<void(winrt::hstring)> m_onDeviceDisconnect;
@@ -57,7 +56,6 @@ private:
     mutable std::mutex m_findAllOpMutex;
     winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::Devices::Enumeration::DeviceInformationCollection>
         m_findAllOp{nullptr};
-    std::vector<winrt::Windows::Devices::Enumeration::DeviceInformation> m_devices;
 };
 } // namespace winrt::AudioPlaybackConnector2::implementation
 

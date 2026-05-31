@@ -74,6 +74,9 @@
     <ClCompile Include="src\services\UpdateService.cpp">
       <Filter>src\services</Filter>
     </ClCompile>
+    <ClCompile Include="src\ui\DevicePickerViewModel.cpp">
+      <Filter>src\ui</Filter>
+    </ClCompile>
     <ClCompile Include="src\ui\TrayIcon.cpp">
       <Filter>src\ui</Filter>
     </ClCompile>
@@ -159,6 +162,9 @@
     </ClInclude>
     <ClInclude Include="include\services\UpdateService.hpp">
       <Filter>include\services</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ui\DevicePickerViewModel.hpp">
+      <Filter>include\ui</Filter>
     </ClInclude>
     <ClInclude Include="include\ui\TrayIcon.hpp">
       <Filter>include\ui</Filter>
