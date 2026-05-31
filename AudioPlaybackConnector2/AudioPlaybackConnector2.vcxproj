@@ -123,6 +123,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\pch.h" />
+    <ClInclude Include="include\app\SingleInstanceGuard.hpp" />
     <ClInclude Include="include\util\Logger.hpp" />
     <ClInclude Include="include\util\Util.hpp" />
     <ClInclude Include="include\core\StringResources.hpp" />
@@ -165,6 +166,7 @@
     <ClCompile Include="src\pch.cpp">
       <PrecompiledHeader>Create</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="src\app\SingleInstanceGuard.cpp" />
     <ClCompile Include="src\core\StringResources.cpp" />
     <ClCompile Include="src\core\ThemeHelper.cpp" />
     <ClCompile Include="src\core\Settings.cpp" />

@@ -23,6 +23,9 @@
     <ClCompile Include="$(GeneratedFilesDir)module.g.cpp">
       <Filter>Generated Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\app\SingleInstanceGuard.cpp">
+      <Filter>src\app</Filter>
+    </ClCompile>
     <ClCompile Include="src\core\StringResources.cpp">
       <Filter>src\core</Filter>
     </ClCompile>
@@ -87,6 +90,9 @@
   <ItemGroup>
     <ClInclude Include="include\pch.h">
       <Filter>include</Filter>
+    </ClInclude>
+    <ClInclude Include="include\app\SingleInstanceGuard.hpp">
+      <Filter>include\app</Filter>
     </ClInclude>
     <ClInclude Include="include\util\Logger.hpp">
       <Filter>include\util</Filter>
@@ -170,6 +176,9 @@
     <Filter Include="src">
       <UniqueIdentifier>{a1b2c3d4-e5f6-7890-abcd-ef1234567890}</UniqueIdentifier>
     </Filter>
+    <Filter Include="src\app">
+      <UniqueIdentifier>{a1b2c3d4-e5f6-7890-abcd-ef1234567895}</UniqueIdentifier>
+    </Filter>
     <Filter Include="src\core">
       <UniqueIdentifier>{a1b2c3d4-e5f6-7890-abcd-ef1234567891}</UniqueIdentifier>
     </Filter>
@@ -184,6 +193,9 @@
     </Filter>
     <Filter Include="include">
       <UniqueIdentifier>{b2c3d4e5-f6a7-8901-bcde-f12345678901}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="include\app">
+      <UniqueIdentifier>{b2c3d4e5-f6a7-8901-bcde-f12345678906}</UniqueIdentifier>
     </Filter>
     <Filter Include="include\core">
       <UniqueIdentifier>{b2c3d4e5-f6a7-8901-bcde-f12345678902}</UniqueIdentifier>

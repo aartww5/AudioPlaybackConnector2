@@ -94,8 +94,7 @@ winrt::AudioPlaybackConnector2::implementation::App::~App() {
 
 void winrt::AudioPlaybackConnector2::implementation::App::OnLaunched(
     [[maybe_unused]] LaunchActivatedEventArgs const& e) {
-    m_singleInstanceMutex.reset(CreateMutexW(nullptr, TRUE, L"AudioPlaybackConnector2_SingleInstance_v2"));
-    if (!m_singleInstanceMutex || GetLastError() == ERROR_ALREADY_EXISTS) {
+    if (!m_singleInstanceGuard.TryAcquire(L"AudioPlaybackConnector2_SingleInstance_v2")) {
         ExitProcess(0);
         return;
     }

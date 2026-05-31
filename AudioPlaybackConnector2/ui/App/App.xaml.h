@@ -1,5 +1,6 @@
 #pragma once
 
+#include <app/SingleInstanceGuard.hpp>
 #include <ui/App/App.xaml.g.h>
 
 #include <services/NotificationService.hpp>
@@ -99,7 +100,7 @@ private:
 
     std::shared_ptr<NotificationService> m_notificationService;
     std::shared_ptr<TrayController> m_trayController;
-    wil::unique_handle m_singleInstanceMutex;
+    SingleInstanceGuard m_singleInstanceGuard;
     static inline UINT s_wmTaskbarCreated = 0;
     static constexpr UINT_PTR c_timerAnimation = 0x41504332;
     ULONG_PTR m_gdiplusToken = 0;
