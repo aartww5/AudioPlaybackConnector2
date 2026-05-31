@@ -4,6 +4,7 @@
 namespace util {
 
 namespace details {
+constexpr std::size_t c_maxQueuedLogMessages = 10000;
 
 /*------------------------------------------------------------------------------------------------------------*/
 /*//////// Environment Helpers ///////////////////////////////////////////////////////////////////////////////*/
@@ -126,6 +127,15 @@ struct Logger::Impl {
             {
                 std::lock_guard lock(QueueMutex);
                 if (ShutdownRequested || !Thread.joinable()) return;
+
+                if (Queue.size() >= details::c_maxQueuedLogMessages) {
+                    auto const overflowCount = Queue.size() - details::c_maxQueuedLogMessages + 1;
+                    for (std::size_t i = 0; i < overflowCount; ++i) {
+                        Queue.pop();
+                    }
+                    DroppedMessages += overflowCount;
+                }
+
                 Queue.push(std::move(message));
             }
             Cv.notify_one();
@@ -198,6 +208,10 @@ struct Logger::Impl {
                 if (!file) return;
 
                 auto const& msg = batch.front();
+                if (msg.size() > static_cast<std::size_t>(std::numeric_limits<DWORD>::max())) {
+                    batch.pop();
+                    continue;
+                }
                 DWORD written = 0;
                 if (WriteFile(file.get(), msg.data(), static_cast<DWORD>(msg.size()), &written, nullptr))
                     bytesWritten += written;
@@ -206,16 +220,46 @@ struct Logger::Impl {
             }
         };
 
+        auto makeDroppedNotice = [](std::size_t droppedCount) -> std::string {
+            if (droppedCount == 0) return {};
+            try {
+                SYSTEMTIME st{};
+                GetLocalTime(&st);
+                auto line = std::format(L"{:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:03} [T:{}] [Logger] Dropped {} queued "
+                                        L"log message(s) due to backpressure\r\n",
+                                        st.wYear,
+                                        st.wMonth,
+                                        st.wDay,
+                                        st.wHour,
+                                        st.wMinute,
+                                        st.wSecond,
+                                        st.wMilliseconds,
+                                        GetCurrentThreadId(),
+                                        droppedCount);
+                return Utf16ToUtf8(line);
+            } catch (...) {
+                return {};
+            }
+        };
+
         tryOpen();
 
         while (true) {
             std::queue<std::string> batch;
             bool shouldExit = false;
+            std::size_t droppedSinceLastFlush = 0;
             {
                 std::unique_lock lock(QueueMutex);
                 Cv.wait(lock, [this] { return !Queue.empty() || ShutdownRequested; });
                 batch.swap(Queue);
+                droppedSinceLastFlush = std::exchange(DroppedMessages, 0);
                 shouldExit = ShutdownRequested;
+            }
+            if (droppedSinceLastFlush > 0) {
+                auto notice = makeDroppedNotice(droppedSinceLastFlush);
+                if (!notice.empty()) {
+                    batch.push(std::move(notice));
+                }
             }
             writeBatch(batch);
             if (shouldExit) break;
@@ -227,6 +271,7 @@ struct Logger::Impl {
     std::mutex QueueMutex;
     std::condition_variable Cv;
     std::queue<std::string> Queue;
+    std::size_t DroppedMessages = 0;
     bool ShutdownRequested = false;
 };
 
