@@ -356,10 +356,8 @@ void SettingsWindow::RebuildDeviceList() {
         return winrt::Microsoft::UI::Xaml::Media::SolidColorBrush(winrt::Windows::UI::Colors::Gray());
     }();
 
-    // Snapshot the device list under a single shared lock, then build
-    // UI elements without holding the lock.
-    auto settings = controller->Snapshot();
-    std::vector<DeviceSettings> devices = std::move(settings.Devices);
+    // Snapshot settings through the controller, then build UI without holding any settings lock.
+    auto devices = SettingsViewModel::BuildDeviceItems(controller->Snapshot());
 
     if (devices.empty()) {
         auto noDevices = TextBlock();
@@ -380,8 +378,7 @@ void SettingsWindow::RebuildDeviceList() {
 
         auto namePanel = StackPanel();
         auto name = TextBlock();
-        std::wstring displayName = dev.Name.empty() ? dev.Id : dev.Name;
-        name.Text(displayName);
+        name.Text(dev.DisplayName);
         namePanel.Children().Append(name);
 
         auto subtitle = TextBlock();

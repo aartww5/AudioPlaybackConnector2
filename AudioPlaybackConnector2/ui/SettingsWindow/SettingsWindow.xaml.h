@@ -3,6 +3,7 @@
 #include <SettingsWindow.g.h>
 #include <services/SettingsController.hpp>
 #include <services/UpdateService.hpp>
+#include <ui/SettingsViewModel.hpp>
 
 namespace winrt::AudioPlaybackConnector2::implementation {
 struct SettingsWindow : SettingsWindowT<SettingsWindow> {
