@@ -1,5 +1,6 @@
 #pragma once
 
+#include <app/DeviceEventRouter.hpp>
 #include <app/SingleInstanceGuard.hpp>
 #include <app/PowerTransitionCoordinator.hpp>
 #include <app/SettingsWindowPresenter.hpp>
@@ -91,16 +92,9 @@ private:
     std::shared_ptr<ISettingsController> m_settingsController;
     winrt::Microsoft::UI::Dispatching::DispatcherQueue m_dispatcherQueue{nullptr};
 
-    std::size_t m_deviceConnectedToken = 0;
-    std::size_t m_deviceDisconnectedToken = 0;
-    std::size_t m_connectionErrorToken = 0;
-    std::size_t m_autoReconnectTriggeredToken = 0;
-    std::size_t m_autoReconnectFailedToken = 0;
-    std::size_t m_deviceStatusChangedToken = 0;
-    std::size_t m_deviceActivityChangedToken = 0;
-
     std::shared_ptr<NotificationService> m_notificationService;
     std::shared_ptr<TrayController> m_trayController;
+    DeviceEventRouter m_deviceEventRouter;
     SingleInstanceGuard m_singleInstanceGuard;
     static inline UINT s_wmTaskbarCreated = 0;
     static constexpr UINT_PTR c_timerAnimation = 0x41504332;

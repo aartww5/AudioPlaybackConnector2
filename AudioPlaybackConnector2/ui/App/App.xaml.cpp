@@ -454,97 +454,51 @@ void winrt::AudioPlaybackConnector2::implementation::App::RefreshTrayVisualState
 void winrt::AudioPlaybackConnector2::implementation::App::SetupDeviceEvents() {
     DebugTrace(L"[App] SetupDeviceEvents()");
     auto weak = get_weak();
-    m_deviceConnectedToken = m_deviceManager->DeviceConnected += [weak](auto id) {
-        if (auto self = weak.get()) {
-            self->RunOnUIThread([weak, id]() {
-                if (auto self = weak.get()) self->OnDeviceConnected(id);
-            });
-        }
+    DeviceEventRouter::Callbacks callbacks;
+    callbacks.DeviceConnected = [weak](auto const& id) {
+        if (auto self = weak.get()) self->OnDeviceConnected(id);
     };
-    m_deviceDisconnectedToken = m_deviceManager->DeviceDisconnected += [weak](auto id) {
-        if (auto self = weak.get()) {
-            self->RunOnUIThread([weak, id]() {
-                if (auto self = weak.get()) self->OnDeviceDisconnected(id);
-            });
-        }
+    callbacks.DeviceDisconnected = [weak](auto const& id) {
+        if (auto self = weak.get()) self->OnDeviceDisconnected(id);
     };
-    m_connectionErrorToken = m_deviceManager->ConnectionError += [weak](auto id, auto msg) {
-        if (auto self = weak.get()) {
-            self->RunOnUIThread([weak, id, msg]() {
-                if (auto self = weak.get()) self->OnConnectionError(id, msg);
-            });
-        }
+    callbacks.ConnectionError = [weak](auto const& id, auto const& msg) {
+        if (auto self = weak.get()) self->OnConnectionError(id, msg);
     };
-    m_autoReconnectTriggeredToken = m_deviceManager->AutoReconnectTriggered += [weak](auto id) {
-        if (auto self = weak.get()) {
-            self->RunOnUIThread([weak, id]() {
-                if (auto self = weak.get()) self->OnAutoReconnectTriggered(id);
-            });
-        }
+    callbacks.AutoReconnectTriggered = [weak](auto const& id) {
+        if (auto self = weak.get()) self->OnAutoReconnectTriggered(id);
     };
-    m_autoReconnectFailedToken = m_deviceManager->AutoReconnectFailed += [weak](auto id) {
-        if (auto self = weak.get()) {
-            self->RunOnUIThread([weak, id]() {
-                if (auto self = weak.get()) self->OnAutoReconnectFailed(id);
-            });
-        }
+    callbacks.AutoReconnectFailed = [weak](auto const& id) {
+        if (auto self = weak.get()) self->OnAutoReconnectFailed(id);
     };
-    m_deviceStatusChangedToken = m_deviceManager->DeviceStatusChanged += [weak](auto id, auto status, auto) {
-        if (auto self = weak.get()) {
-            self->RunOnUIThread([weak, id, status]() {
-                auto self = weak.get();
-                if (!self) return;
-                if (self->m_exiting.load() || !self->m_trayController || !self->m_deviceManager) return;
-                if (!self->m_hwnd || !IsWindow(self->m_hwnd)) return;
-                bool forceErrorWhenIdle = !status.empty() && status != winrt::hstring(_("Connecting")) &&
-                                          status != winrt::hstring(_("Reconnecting")) &&
-                                          status != winrt::hstring(_("Connected"));
-                self->RefreshTrayVisualState(forceErrorWhenIdle);
-            });
-        }
+    callbacks.DeviceStatusChanged = [weak](auto const&, auto const& status) {
+        auto self = weak.get();
+        if (!self) return;
+        if (self->m_exiting.load() || !self->m_trayController || !self->m_deviceManager) return;
+        if (!self->m_hwnd || !IsWindow(self->m_hwnd)) return;
+        bool forceErrorWhenIdle = !status.empty() && status != winrt::hstring(_("Connecting")) &&
+                                  status != winrt::hstring(_("Reconnecting")) &&
+                                  status != winrt::hstring(_("Connected"));
+        self->RefreshTrayVisualState(forceErrorWhenIdle);
     };
-    m_deviceActivityChangedToken = m_deviceManager->DeviceActivityChanged += [weak](auto) {
-        if (auto self = weak.get()) {
-            self->RunOnUIThread([weak]() {
-                auto self = weak.get();
-                if (!self || self->m_exiting.load() || !self->m_trayController || !self->m_deviceManager) return;
-                if (!self->m_hwnd || !IsWindow(self->m_hwnd)) return;
-                self->RefreshTrayVisualState(false);
-            });
-        }
+    callbacks.DeviceActivityChanged = [weak]() {
+        auto self = weak.get();
+        if (!self || self->m_exiting.load() || !self->m_trayController || !self->m_deviceManager) return;
+        if (!self->m_hwnd || !IsWindow(self->m_hwnd)) return;
+        self->RefreshTrayVisualState(false);
     };
+
+    m_deviceEventRouter.Attach(
+        m_deviceManager,
+        [weak](std::function<void()> work) {
+            if (auto self = weak.get()) {
+                self->RunOnUIThread(std::move(work));
+            }
+        },
+        std::move(callbacks));
 }
 
 void winrt::AudioPlaybackConnector2::implementation::App::TeardownDeviceEvents() {
-    if (!m_deviceManager) return;
-    if (m_deviceConnectedToken) {
-        m_deviceManager->DeviceConnected -= m_deviceConnectedToken;
-        m_deviceConnectedToken = 0;
-    }
-    if (m_deviceDisconnectedToken) {
-        m_deviceManager->DeviceDisconnected -= m_deviceDisconnectedToken;
-        m_deviceDisconnectedToken = 0;
-    }
-    if (m_connectionErrorToken) {
-        m_deviceManager->ConnectionError -= m_connectionErrorToken;
-        m_connectionErrorToken = 0;
-    }
-    if (m_autoReconnectTriggeredToken) {
-        m_deviceManager->AutoReconnectTriggered -= m_autoReconnectTriggeredToken;
-        m_autoReconnectTriggeredToken = 0;
-    }
-    if (m_autoReconnectFailedToken) {
-        m_deviceManager->AutoReconnectFailed -= m_autoReconnectFailedToken;
-        m_autoReconnectFailedToken = 0;
-    }
-    if (m_deviceStatusChangedToken) {
-        m_deviceManager->DeviceStatusChanged -= m_deviceStatusChangedToken;
-        m_deviceStatusChangedToken = 0;
-    }
-    if (m_deviceActivityChangedToken) {
-        m_deviceManager->DeviceActivityChanged -= m_deviceActivityChangedToken;
-        m_deviceActivityChangedToken = 0;
-    }
+    m_deviceEventRouter.Detach();
 }
 
 void winrt::AudioPlaybackConnector2::implementation::App::ShowSettingsWindow() {
