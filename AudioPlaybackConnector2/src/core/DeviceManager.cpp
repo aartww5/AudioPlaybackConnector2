@@ -457,6 +457,19 @@ void DeviceManager::SetAutoReconnect(winrt::hstring deviceId, bool enabled) {
     if (!enabled) m_reconnectController.ClearAttempts(deviceId);
 }
 
+winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::Devices::Enumeration::DeviceInformationCollection>
+DeviceManager::RefreshDevicesAsync() {
+    auto lifetime = shared_from_this();
+    {
+        auto guard = m_lock.lock_shared();
+        if (m_shutdownForProcessExit || !m_discoveryService) {
+            co_return nullptr;
+        }
+    }
+
+    co_return co_await m_discoveryService->RefreshAsync();
+}
+
 std::vector<DeviceConnectionInfo> DeviceManager::GetConnectedDevices() const {
     auto guard = m_lock.lock_shared();
     return m_sessions.ConnectedDevices();

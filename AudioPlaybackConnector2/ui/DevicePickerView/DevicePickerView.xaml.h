@@ -48,14 +48,15 @@ private:
     std::function<void(winrt::hstring)> m_onDeviceSelected;
     std::function<void(winrt::hstring)> m_onDeviceDisconnect;
     std::function<void(winrt::hstring)> m_onDeviceReconnect;
+    std::weak_ptr<DeviceManager> m_deviceManager;
     std::atomic<bool> m_isLoadingDevices = false;
     std::atomic<bool> m_loadDevicesCancelled = false;
     std::atomic<bool> m_suppressSelectionChanged = false;
     std::atomic<uint64_t> m_loadDevicesRequestId = 0;
     std::atomic<uint64_t> m_activeLoadRequestId = 0;
-    mutable std::mutex m_findAllOpMutex;
+    mutable std::mutex m_refreshDevicesOpMutex;
     winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::Devices::Enumeration::DeviceInformationCollection>
-        m_findAllOp{nullptr};
+        m_refreshDevicesOp{nullptr};
 };
 } // namespace winrt::AudioPlaybackConnector2::implementation
 

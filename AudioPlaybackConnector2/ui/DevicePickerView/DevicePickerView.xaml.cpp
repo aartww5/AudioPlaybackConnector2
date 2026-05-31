@@ -42,6 +42,7 @@ void DevicePickerView::Initialize(std::shared_ptr<DeviceManager> manager,
                                   std::function<void(winrt::hstring)> onDeviceSelected,
                                   std::function<void(winrt::hstring)> onDeviceDisconnect,
                                   std::function<void(winrt::hstring)> onDeviceReconnect) {
+    m_deviceManager = manager;
     m_viewModel.SetDeviceManager(manager);
     m_onClose = std::move(onClose);
     m_onDeviceSelected = std::move(onDeviceSelected);
@@ -71,44 +72,52 @@ void DevicePickerView::LoadDevices() {
         m_activeLoadRequestId.store(0);
         return;
     }
-    auto selector = winrt::Windows::Media::Audio::AudioPlaybackConnection::GetDeviceSelector();
+
+    auto manager = m_deviceManager.lock();
+    if (!manager) {
+        DebugTrace(L"[DevicePickerView] ERROR: no DeviceManager available for LoadDevices");
+        OnDeviceEnumerationFailed(listWasEmpty, requestId);
+        return;
+    }
+
     auto weak = get_weak();
 
     {
-        std::lock_guard lock(m_findAllOpMutex);
-        if (m_findAllOp) {
+        std::lock_guard lock(m_refreshDevicesOpMutex);
+        if (m_refreshDevicesOp) {
             try {
-                m_findAllOp.Cancel();
+                m_refreshDevicesOp.Cancel();
             } catch (winrt::hresult_error const& ex) {
-                DebugTrace(L"[DevicePickerView] ERROR: cancelling previous FindAllAsync failed: 0x{0:08X} {1}",
+                DebugTrace(L"[DevicePickerView] ERROR: cancelling previous RefreshDevicesAsync failed: 0x{0:08X} {1}",
                            static_cast<uint32_t>(ex.code()),
                            ex.message());
             } catch (std::exception const& ex) {
-                DebugTrace(L"[DevicePickerView] ERROR: cancelling previous FindAllAsync failed: {0}",
+                DebugTrace(L"[DevicePickerView] ERROR: cancelling previous RefreshDevicesAsync failed: {0}",
                            util::Utf8ToUtf16(ex.what()));
             } catch (...) {
-                DebugTrace(L"[DevicePickerView] ERROR: cancelling previous FindAllAsync failed: unknown exception");
+                DebugTrace(
+                    L"[DevicePickerView] ERROR: cancelling previous RefreshDevicesAsync failed: unknown exception");
             }
-            m_findAllOp = nullptr;
+            m_refreshDevicesOp = nullptr;
         }
-        m_findAllOp = winrt::Windows::Devices::Enumeration::DeviceInformation::FindAllAsync(selector);
+        m_refreshDevicesOp = manager->RefreshDevicesAsync();
     }
 
     winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::Devices::Enumeration::DeviceInformationCollection>
         pendingOp{nullptr};
     {
-        std::lock_guard lock(m_findAllOpMutex);
-        pendingOp = m_findAllOp;
+        std::lock_guard lock(m_refreshDevicesOpMutex);
+        pendingOp = m_refreshDevicesOp;
     }
 
     pendingOp.Completed([weak, dispatcher, listWasEmpty, requestId](auto const& sender,
                                                                     winrt::Windows::Foundation::AsyncStatus status) {
         if (auto self = weak.get()) {
-            std::lock_guard lock(self->m_findAllOpMutex);
+            std::lock_guard lock(self->m_refreshDevicesOpMutex);
             if (self->m_activeLoadRequestId.load() != requestId) {
                 return;
             }
-            self->m_findAllOp = nullptr;
+            self->m_refreshDevicesOp = nullptr;
         }
 
         if (status == winrt::Windows::Foundation::AsyncStatus::Canceled) {
@@ -151,15 +160,15 @@ void DevicePickerView::LoadDevices() {
                 }
             }
         } catch (winrt::hresult_error const& ex) {
-            DebugTrace(L"[DevicePickerView] ERROR: FindAllAsync failed: 0x{0:08X} {1}",
+            DebugTrace(L"[DevicePickerView] ERROR: RefreshDevicesAsync failed: 0x{0:08X} {1}",
                        static_cast<uint32_t>(ex.code()),
                        ex.message());
             enqueueFailure();
         } catch (std::exception const& ex) {
-            DebugTrace(L"[DevicePickerView] ERROR: FindAllAsync failed: {0}", util::Utf8ToUtf16(ex.what()));
+            DebugTrace(L"[DevicePickerView] ERROR: RefreshDevicesAsync failed: {0}", util::Utf8ToUtf16(ex.what()));
             enqueueFailure();
         } catch (...) {
-            DebugTrace(L"[DevicePickerView] ERROR: FindAllAsync failed: unknown exception");
+            DebugTrace(L"[DevicePickerView] ERROR: RefreshDevicesAsync failed: unknown exception");
             enqueueFailure();
         }
     });
@@ -171,22 +180,23 @@ void DevicePickerView::CancelLoadDevices() {
     m_activeLoadRequestId.store(invalidatedRequest);
     m_isLoadingDevices.store(false);
     {
-        std::lock_guard lock(m_findAllOpMutex);
-        if (m_findAllOp) {
+        std::lock_guard lock(m_refreshDevicesOpMutex);
+        if (m_refreshDevicesOp) {
             try {
-                m_findAllOp.Cancel();
+                m_refreshDevicesOp.Cancel();
             } catch (winrt::hresult_error const& ex) {
-                DebugTrace(L"[DevicePickerView] ERROR: CancelLoadDevices failed to cancel FindAllAsync: 0x{0:08X} {1}",
-                           static_cast<uint32_t>(ex.code()),
-                           ex.message());
+                DebugTrace(
+                    L"[DevicePickerView] ERROR: CancelLoadDevices failed to cancel RefreshDevicesAsync: 0x{0:08X} {1}",
+                    static_cast<uint32_t>(ex.code()),
+                    ex.message());
             } catch (std::exception const& ex) {
-                DebugTrace(L"[DevicePickerView] ERROR: CancelLoadDevices failed to cancel FindAllAsync: {0}",
+                DebugTrace(L"[DevicePickerView] ERROR: CancelLoadDevices failed to cancel RefreshDevicesAsync: {0}",
                            util::Utf8ToUtf16(ex.what()));
             } catch (...) {
-                DebugTrace(
-                    L"[DevicePickerView] ERROR: CancelLoadDevices failed to cancel FindAllAsync: unknown exception");
+                DebugTrace(L"[DevicePickerView] ERROR: CancelLoadDevices failed to cancel RefreshDevicesAsync: unknown "
+                           L"exception");
             }
-            m_findAllOp = nullptr;
+            m_refreshDevicesOp = nullptr;
         }
     }
 }
@@ -217,6 +227,12 @@ void DevicePickerView::ApplyDeviceResults(
     }
     ProgressIndicator().IsActive(false);
     ProgressIndicator().Visibility(Visibility::Collapsed);
+
+    if (!devices) {
+        m_isLoadingDevices.store(false);
+        m_activeLoadRequestId.store(0);
+        return;
+    }
 
     m_viewModel.SetDevices(devices);
     RebuildDeviceListFromCache();

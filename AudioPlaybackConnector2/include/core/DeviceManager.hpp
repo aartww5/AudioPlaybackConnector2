@@ -44,6 +44,8 @@ public:
     winrt::fire_and_forget ReconnectAsync(winrt::hstring deviceId);
     void Disconnect(winrt::hstring deviceId);
     void SetAutoReconnect(winrt::hstring deviceId, bool enabled);
+    winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::Devices::Enumeration::DeviceInformationCollection>
+    RefreshDevicesAsync();
 
     std::vector<DeviceConnectionInfo> GetConnectedDevices() const;
     bool HasConnections() const;
