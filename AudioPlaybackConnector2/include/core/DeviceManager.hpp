@@ -1,21 +1,10 @@
 #pragma once
 
 #include <core/DeviceDiscoveryService.hpp>
+#include <core/DeviceSessionStore.hpp>
 #include <string>
 #include <unordered_set>
 #include <util/Util.hpp>
-
-/*------------------------------------------------------------------------------------------------------------*/
-/*//////// Device Connection Info ////////////////////////////////////////////////////////////////////////////*/
-/*------------------------------------------------------------------------------------------------------------*/
-
-struct DeviceConnectionInfo {
-    winrt::Windows::Devices::Enumeration::DeviceInformation Device{nullptr};
-    winrt::Windows::Media::Audio::AudioPlaybackConnection Connection{nullptr};
-    winrt::event_token StateChangedToken{};
-    bool AutoReconnect = false;
-    bool IsOpen = false;
-};
 
 /*------------------------------------------------------------------------------------------------------------*/
 /*//////// Device Manager ////////////////////////////////////////////////////////////////////////////////////*/
@@ -99,11 +88,7 @@ private:
     /*------------------------------------------------------------------------------------------------------------*/
 
     mutable wil::srwlock m_lock;
-    std::unordered_map<winrt::hstring, DeviceConnectionInfo> m_connections;
-    std::unordered_set<winrt::hstring> m_disconnectingIds;
-    std::unordered_set<winrt::hstring> m_reconnectingIds;
-    std::unordered_set<winrt::hstring> m_connectingIds;
-    std::vector<winrt::Windows::Media::Audio::AudioPlaybackConnection> m_zombieConnections;
+    DeviceSessionStore m_sessions;
     AutoReconnectPredicate m_autoReconnectPred;
     std::unordered_set<winrt::hstring> m_cancelledReconnectIds;
     std::unordered_map<winrt::hstring, std::size_t> m_reconnectTimerCounts;
