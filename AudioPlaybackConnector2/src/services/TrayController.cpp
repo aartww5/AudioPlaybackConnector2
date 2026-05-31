@@ -265,7 +265,10 @@ void TrayController::UpdateTooltipFromConnections() {
 }
 
 void TrayController::RefreshDevicePickerState() {
-    if (!m_devicePickerView || m_pickerFlyoutState.load() == PickerFlyoutState::Closed) return;
+    if (m_isTearingDown.load()) return;
+    if (!m_devicePickerView) return;
+    if (m_pickerFlyoutState.load() != PickerFlyoutState::Open) return;
+    if (!m_pickerFlyout || !m_pickerFlyout.Content()) return;
     try {
         auto impl = m_devicePickerView.as<winrt::AudioPlaybackConnector2::implementation::DevicePickerView>();
         impl->RefreshDeviceStates();
@@ -423,8 +426,21 @@ void TrayController::EnsureDevicePickerViewCreated() {
             auto self = weak.lock();
             if (!self || self->m_isTearingDown.load()) return;
             DebugTrace(L"[TrayController] User reconnected device: {0}", std::wstring(id));
-            if (self->m_reconnectCallback) self->m_reconnectCallback(id);
             if (self->m_pickerFlyout) self->m_pickerFlyout.Hide();
+            auto dispatcher = self->m_mainWindow ? self->m_mainWindow.DispatcherQueue() : nullptr;
+            if (dispatcher) {
+                auto weakSelf = weak;
+                bool queued = dispatcher.TryEnqueue([weakSelf, id]() {
+                    if (auto queuedSelf = weakSelf.lock();
+                        queuedSelf && !queuedSelf->m_isTearingDown.load() && queuedSelf->m_reconnectCallback) {
+                        queuedSelf->m_reconnectCallback(id);
+                    }
+                });
+                if (queued) {
+                    return;
+                }
+            }
+            if (self->m_reconnectCallback) self->m_reconnectCallback(id);
         });
 }
 
