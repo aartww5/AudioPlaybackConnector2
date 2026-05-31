@@ -3,6 +3,7 @@
 #include <ui/App/App.xaml.g.h>
 
 #include <services/NotificationService.hpp>
+#include <services/SettingsController.hpp>
 #include <services/TrayController.hpp>
 
 class Settings;
@@ -85,6 +86,7 @@ private:
 
     std::unique_ptr<::Settings> m_settings;
     std::shared_ptr<::DeviceManager> m_deviceManager;
+    std::shared_ptr<ISettingsController> m_settingsController;
     winrt::Microsoft::UI::Dispatching::DispatcherQueue m_dispatcherQueue{nullptr};
 
     std::size_t m_deviceConnectedToken = 0;

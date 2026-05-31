@@ -10,6 +10,7 @@
 #include <core/Settings.hpp>
 #include <core/ThemeHelper.hpp>
 #include <core/StringResources.hpp>
+#include <services/SettingsController.hpp>
 #include <services/UpdateService.hpp>
 #include <util/CrashHandler.hpp>
 #include <util/Util.hpp>
@@ -285,6 +286,7 @@ void winrt::AudioPlaybackConnector2::implementation::App::InitializeNotification
 void winrt::AudioPlaybackConnector2::implementation::App::InitializeDeviceManager() {
     DebugTrace(L"[App] InitializeDeviceManager()");
     m_deviceManager = std::make_shared<DeviceManager>();
+    m_settingsController = std::make_shared<SettingsController>(*m_settings, m_deviceManager);
     auto weak = get_weak();
     m_deviceManager->SetAutoReconnectPredicate([weak](auto id) {
         auto self = weak.get();
@@ -655,9 +657,12 @@ void winrt::AudioPlaybackConnector2::implementation::App::ShowSettingsWindow() {
         m_settingsWindow = winrt::AudioPlaybackConnector2::SettingsWindow();
 
         auto impl = m_settingsWindow.as<winrt::AudioPlaybackConnector2::implementation::SettingsWindow>();
-        if (impl && m_trayController) {
-            if (auto pos = m_trayController->GetSettingsWindowPosition()) {
-                impl->SetTargetPosition(pos->x, pos->y);
+        if (impl) {
+            impl->SetSettingsController(m_settingsController);
+            if (m_trayController) {
+                if (auto pos = m_trayController->GetSettingsWindowPosition()) {
+                    impl->SetTargetPosition(pos->x, pos->y);
+                }
             }
         }
 

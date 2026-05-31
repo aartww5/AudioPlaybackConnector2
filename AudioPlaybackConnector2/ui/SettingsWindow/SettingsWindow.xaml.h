@@ -1,6 +1,7 @@
 #pragma once
 
 #include <SettingsWindow.g.h>
+#include <services/SettingsController.hpp>
 #include <services/UpdateService.hpp>
 
 namespace winrt::AudioPlaybackConnector2::implementation {
@@ -13,6 +14,7 @@ struct SettingsWindow : SettingsWindowT<SettingsWindow> {
                                      winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
     void OpenAppInstallerButton_Click(winrt::Windows::Foundation::IInspectable const& sender,
                                       winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
+    void SetSettingsController(std::shared_ptr<ISettingsController> controller);
     void SetTargetPosition(int32_t x, int32_t y);
 
 private:
@@ -28,6 +30,7 @@ private:
     int32_t m_targetY = INT_MIN;
     std::atomic_uint64_t m_startupRequestId = 0;
     std::atomic_uint64_t m_updateCheckRequestId = 0;
+    std::shared_ptr<ISettingsController> m_settingsController;
     bool m_suppressStartupToggle = false;
 };
 } // namespace winrt::AudioPlaybackConnector2::implementation

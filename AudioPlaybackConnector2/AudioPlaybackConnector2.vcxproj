@@ -130,6 +130,7 @@
     <ClInclude Include="include\core\Settings.hpp" />
     <ClInclude Include="include\core\DeviceManager.hpp" />
     <ClInclude Include="include\services\NotificationService.hpp" />
+    <ClInclude Include="include\services\SettingsController.hpp" />
     <ClInclude Include="include\services\TrayController.hpp" />
     <ClInclude Include="include\services\UpdateService.hpp" />
     <ClInclude Include="include\ui\TrayIcon.hpp" />
@@ -165,6 +166,7 @@
     <ClCompile Include="src\core\Settings.cpp" />
     <ClCompile Include="src\core\DeviceManager.cpp" />
     <ClCompile Include="src\services\NotificationService.cpp" />
+    <ClCompile Include="src\services\SettingsController.cpp" />
     <ClCompile Include="src\services\TrayController.cpp" />
     <ClCompile Include="src\services\UpdateService.cpp" />
     <ClCompile Include="src\ui\TrayIcon.cpp" />

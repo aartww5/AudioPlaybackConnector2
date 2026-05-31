@@ -6,9 +6,7 @@
 
 #include <winrt/Windows.ApplicationModel.h>
 
-#include <App/App.xaml.h>
 #include <core/Settings.hpp>
-#include <core/DeviceManager.hpp>
 #include <core/StringResources.hpp>
 #include <core/ThemeHelper.hpp>
 #include <services/UpdateService.hpp>
@@ -83,50 +81,33 @@ void SettingsWindow::RootGrid_Loaded(IInspectable const&, RoutedEventArgs const&
     CheckForUpdatesButton().Content(box_value(winrt::hstring(_("Settings_CheckForUpdates_Button"))));
     OpenAppInstallerButton().Content(box_value(winrt::hstring(_("Settings_OpenAppInstaller"))));
 
-    auto app = App::GetInstance();
-    if (!app) return;
+    auto controller = m_settingsController;
+    if (!controller) return;
 
     {
-        auto locked = app->GetSettings().LockSharedData();
-        AutoReconnectToggle().IsOn(locked->GlobalAutoReconnect);
+        auto settings = controller->Snapshot();
+        AutoReconnectToggle().IsOn(settings.GlobalAutoReconnect);
     }
     AutoReconnectToggle().OffContent(box_value(L""));
     AutoReconnectToggle().OnContent(box_value(L""));
-    AutoReconnectToggle().Toggled([](auto const& s, auto) {
-        auto app = App::GetInstance();
-        if (!app) return;
-        bool enabled = s.template as<ToggleSwitch>().IsOn();
-        std::vector<DeviceSettings> devices;
-        {
-            auto locked = app->GetSettings().LockExclusiveData();
-            locked->GlobalAutoReconnect = enabled;
-            devices = locked->Devices;
-        }
-        if (auto manager = app->GetDeviceManager()) {
-            for (const auto& c : manager->GetConnectedDevices()) {
-                bool autoReconnect = enabled;
-                for (const auto& d : devices) {
-                    if (d.Id == c.Device.Id()) {
-                        autoReconnect = autoReconnect || d.AutoReconnect;
-                        break;
-                    }
-                }
-                manager->SetAutoReconnect(c.Device.Id(), autoReconnect);
+    auto weak = get_weak();
+    AutoReconnectToggle().Toggled([weak](auto const& s, auto) {
+        if (auto self = weak.get()) {
+            if (auto settingsController = self->m_settingsController) {
+                settingsController->SetGlobalAutoReconnect(s.template as<ToggleSwitch>().IsOn());
             }
         }
-        app->GetSettings().Save(GetModuleHandleW(nullptr));
     });
 
     // Show cached value immediately; async init below corrects it from the actual task state.
     {
-        auto locked = app->GetSettings().LockSharedData();
-        StartWithWindowsToggle().IsOn(locked->StartWithWindows);
+        auto settings = controller->Snapshot();
+        StartWithWindowsToggle().IsOn(settings.StartWithWindows);
     }
     StartWithWindowsToggle().OffContent(box_value(L""));
     StartWithWindowsToggle().OnContent(box_value(L""));
     SyncStartupTaskStateAsync();
 
-    auto weak = get_weak();
     StartWithWindowsToggle().Toggled([weak](auto const& sender, auto const& args) {
         if (auto self = weak.get()) {
             self->StartWithWindowsToggle_Toggled(sender, args);
@@ -266,12 +247,8 @@ winrt::fire_and_forget SettingsWindow::SyncStartupTaskStateAsync() {
         m_suppressStartupToggle = true;
         StartWithWindowsToggle().IsOn(enabled);
         m_suppressStartupToggle = false;
-        if (auto app = App::GetInstance()) {
-            {
-                auto locked = app->GetSettings().LockExclusiveData();
-                locked->StartWithWindows = enabled;
-            }
-            app->GetSettings().Save(GetModuleHandleW(nullptr));
+        if (auto settingsController = m_settingsController) {
+            settingsController->SetStartWithWindows(enabled);
         }
     } catch (...) {
     }
@@ -291,12 +268,8 @@ winrt::fire_and_forget SettingsWindow::ApplyStartWithWindowsAsync(bool on) {
         if (on == currentlyEnabled) {
             co_await ui;
             if (requestId != m_startupRequestId.load()) co_return;
-            if (auto app = App::GetInstance()) {
-                {
-                    auto locked = app->GetSettings().LockExclusiveData();
-                    locked->StartWithWindows = on;
-                }
-                app->GetSettings().Save(GetModuleHandleW(nullptr));
+            if (auto settingsController = m_settingsController) {
+                settingsController->SetStartWithWindows(on);
             }
             co_return;
         }
@@ -315,12 +288,8 @@ winrt::fire_and_forget SettingsWindow::ApplyStartWithWindowsAsync(bool on) {
         if (requestId != m_startupRequestId.load()) co_return;
 
         if (!success) {
-            if (auto app = App::GetInstance()) {
-                {
-                    auto locked = app->GetSettings().LockExclusiveData();
-                    locked->StartWithWindows = !on;
-                }
-                app->GetSettings().Save(GetModuleHandleW(nullptr));
+            if (auto settingsController = m_settingsController) {
+                settingsController->SetStartWithWindows(!on);
             }
             m_suppressStartupToggle = true;
             StartWithWindowsToggle().IsOn(!on);
@@ -328,12 +297,8 @@ winrt::fire_and_forget SettingsWindow::ApplyStartWithWindowsAsync(bool on) {
             co_return;
         }
 
-        if (auto app = App::GetInstance()) {
-            {
-                auto locked = app->GetSettings().LockExclusiveData();
-                locked->StartWithWindows = on;
-            }
-            app->GetSettings().Save(GetModuleHandleW(nullptr));
+        if (auto settingsController = m_settingsController) {
+            settingsController->SetStartWithWindows(on);
         }
     } catch (...) {
         revertToggle = true;
@@ -342,12 +307,8 @@ winrt::fire_and_forget SettingsWindow::ApplyStartWithWindowsAsync(bool on) {
     if (revertToggle) {
         co_await ui;
         if (requestId != m_startupRequestId.load()) co_return;
-        if (auto app = App::GetInstance()) {
-            {
-                auto locked = app->GetSettings().LockExclusiveData();
-                locked->StartWithWindows = !on;
-            }
-            app->GetSettings().Save(GetModuleHandleW(nullptr));
+        if (auto settingsController = m_settingsController) {
+            settingsController->SetStartWithWindows(!on);
         }
         m_suppressStartupToggle = true;
         StartWithWindowsToggle().IsOn(!on);
@@ -362,8 +323,8 @@ winrt::fire_and_forget SettingsWindow::ApplyStartWithWindowsAsync(bool on) {
 void SettingsWindow::RebuildDeviceList() {
     DevicesPanel().Children().Clear();
 
-    auto app = App::GetInstance();
-    if (!app) return;
+    auto controller = m_settingsController;
+    if (!controller) return;
 
     auto secondaryBrush = [&]() -> winrt::Microsoft::UI::Xaml::Media::Brush {
         auto brush = Application::Current().Resources().TryLookup(box_value(L"TextFillColorSecondaryBrush"));
@@ -373,11 +334,8 @@ void SettingsWindow::RebuildDeviceList() {
 
     // Snapshot the device list under a single shared lock, then build
     // UI elements without holding the lock.
-    std::vector<DeviceSettings> devices;
-    {
-        auto locked = app->GetSettings().LockSharedData();
-        devices = locked->Devices;
-    }
+    auto settings = controller->Snapshot();
+    std::vector<DeviceSettings> devices = std::move(settings.Devices);
 
     if (devices.empty()) {
         auto noDevices = TextBlock();
@@ -416,38 +374,24 @@ void SettingsWindow::RebuildDeviceList() {
         toggle.OffContent(box_value(L""));
         toggle.OnContent(box_value(L""));
         ToolTipService::SetToolTip(toggle, box_value(winrt::hstring(_("Device_AutoReconnect"))));
-        toggle.Toggled([id = dev.Id](auto const& s, auto) {
-            auto app = App::GetInstance();
-            if (!app) return;
-            bool on = s.template as<ToggleSwitch>().IsOn();
-            bool globalAutoReconnect = false;
-            {
-                auto locked = app->GetSettings().LockExclusiveData();
-                for (auto& d : locked->Devices)
-                    if (d.Id == id) d.AutoReconnect = on;
-                globalAutoReconnect = locked->GlobalAutoReconnect;
+        auto weak = get_weak();
+        toggle.Toggled([id = dev.Id, weak](auto const& s, auto) {
+            if (auto self = weak.get()) {
+                if (auto settingsController = self->m_settingsController) {
+                    settingsController->SetDeviceAutoReconnect(id, s.template as<ToggleSwitch>().IsOn());
+                }
             }
-            if (auto manager = app->GetDeviceManager()) {
-                manager->SetAutoReconnect(winrt::hstring(id), globalAutoReconnect || on);
-            }
-            app->GetSettings().Save(GetModuleHandleW(nullptr));
         });
         Grid::SetColumn(toggle, 1);
 
         auto forgetBtn = Button();
         forgetBtn.MinWidth(80);
         forgetBtn.Content(box_value(winrt::hstring(_("Device_Forget"))));
-        auto weak = get_weak();
         forgetBtn.Click([id = dev.Id, weak](auto, auto) {
-            auto app = App::GetInstance();
-            if (!app) return;
-            {
-                auto locked = app->GetSettings().LockExclusiveData();
-                auto& vec = locked->Devices;
-                std::erase_if(vec, [&](auto const& d) { return d.Id == id; });
-            }
-            app->GetSettings().Save(GetModuleHandleW(nullptr));
             if (auto self = weak.get()) {
+                if (auto settingsController = self->m_settingsController) {
+                    settingsController->ForgetDevice(id);
+                }
                 self->RebuildDeviceList();
             }
         });
@@ -463,6 +407,10 @@ void SettingsWindow::RebuildDeviceList() {
 /*------------------------------------------------------------------------------------------------------------*/
 /*//////// Public Interface //////////////////////////////////////////////////////////////////////////////////*/
 /*------------------------------------------------------------------------------------------------------------*/
+
+void SettingsWindow::SetSettingsController(std::shared_ptr<ISettingsController> controller) {
+    m_settingsController = std::move(controller);
+}
 
 void SettingsWindow::SetTargetPosition(int32_t x, int32_t y) {
     m_targetX = x;
