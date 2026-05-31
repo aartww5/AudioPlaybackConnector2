@@ -1,5 +1,6 @@
 #include <pch.h>
 #include <core/DeviceManager.hpp>
+#include <core/AudioConnectionService.hpp>
 #include <core/StringResources.hpp>
 #include <utility>
 
@@ -36,15 +37,6 @@ std::wstring_view OpenResultStatusName(winrt::Windows::Media::Audio::AudioPlayba
         case winrt::Windows::Media::Audio::AudioPlaybackConnectionOpenResultStatus::UnknownFailure:
             return L"UnknownFailure";
         default: return L"UnknownStatus";
-    }
-}
-
-void DetachConnectionForProcessExit(winrt::Windows::Media::Audio::AudioPlaybackConnection& connection) noexcept {
-    if (!connection) return;
-    try {
-        auto leaked = winrt::detach_abi(connection);
-        (void)leaked;
-    } catch (...) {
     }
 }
 
@@ -130,12 +122,9 @@ void DeviceManager::ShutdownForProcessExit() noexcept {
                        connections.size());
             for (auto& item : connections) {
                 if (item.Connection && item.StateChangedToken.value != 0) {
-                    try {
-                        item.Connection.StateChanged(item.StateChangedToken);
-                    } catch (...) {
-                    }
+                    AudioConnectionService::RevokeStateChanged(item.Connection, item.StateChangedToken);
                 }
-                DetachConnectionForProcessExit(item.Connection);
+                AudioConnectionService::DetachForProcessExit(item.Connection);
             }
         }
     } catch (...) {
@@ -187,10 +176,7 @@ void DeviceManager::SuspendForPowerTransition() noexcept {
             closeConnections.reserve(connections.size());
             for (auto& item : connections) {
                 if (item.Connection && item.StateChangedToken.value != 0) {
-                    try {
-                        item.Connection.StateChanged(item.StateChangedToken);
-                    } catch (...) {
-                    }
+                    AudioConnectionService::RevokeStateChanged(item.Connection, item.StateChangedToken);
                 }
                 if (item.Connection) {
                     closeConnections.push_back(std::move(item.Connection));
@@ -201,10 +187,7 @@ void DeviceManager::SuspendForPowerTransition() noexcept {
                 (void)winrt::Windows::System::Threading::ThreadPool::RunAsync(
                     [connections = std::move(closeConnections)](winrt::Windows::Foundation::IAsyncAction) mutable {
                         for (auto& connection : connections) {
-                            try {
-                                connection.Close();
-                            } catch (...) {
-                            }
+                            AudioConnectionService::Close(connection);
                         }
                     });
             } catch (...) {
@@ -417,10 +400,7 @@ winrt::fire_and_forget DeviceManager::ReconnectAsync(winrt::hstring deviceId) {
         if (oldConn) {
             // Revoke the event token first so no stale Closed callbacks fire.
             if (oldToken.value != 0) {
-                try {
-                    oldConn.StateChanged(oldToken);
-                } catch (...) {
-                }
+                AudioConnectionService::RevokeStateChanged(oldConn, oldToken);
             }
             // Close on a background thread – never block the UI thread.
             co_await winrt::resume_background();
@@ -431,13 +411,9 @@ winrt::fire_and_forget DeviceManager::ReconnectAsync(winrt::hstring deviceId) {
                 shutdownForProcessExit = m_shutdownForProcessExit;
             }
             if (shutdownForProcessExit) {
-                DetachConnectionForProcessExit(oldConn);
+                AudioConnectionService::DetachForProcessExit(oldConn);
             } else {
-                try {
-                    oldConn.Close();
-                } catch (...) {
-                }
-                oldConn = nullptr;
+                AudioConnectionService::Close(oldConn);
                 DebugTrace(L"[DeviceManager] ReconnectAsync old connection closed; cooling down before reconnect: {0}",
                            std::wstring(deviceId));
                 co_await winrt::resume_after(c_reconnectCloseCooldown);
@@ -671,10 +647,7 @@ void DeviceManager::Disconnect(winrt::hstring deviceId, DisconnectReason reason)
 
     // Revoke the StateChanged token so the zombie cannot fire events at us.
     if (connection && stateChangedToken.value != 0) {
-        try {
-            connection.StateChanged(stateChangedToken);
-        } catch (...) {
-        }
+        AudioConnectionService::RevokeStateChanged(connection, stateChangedToken);
     }
 
     // Move the connection to the zombie list. Its destructor (which calls Close())
@@ -730,17 +703,14 @@ void DeviceManager::Disconnect(winrt::hstring deviceId, DisconnectReason reason)
         }
         if (shutdownForProcessExit) {
             for (auto& z : zombies) {
-                DetachConnectionForProcessExit(z);
+                AudioConnectionService::DetachForProcessExit(z);
             }
         } else {
             try {
                 (void)winrt::Windows::System::Threading::ThreadPool::RunAsync(
                     [zombies = std::move(zombies)](winrt::Windows::Foundation::IAsyncAction) mutable {
                         for (auto& z : zombies) {
-                            try {
-                                z.Close();
-                            } catch (...) {
-                            }
+                            AudioConnectionService::Close(z);
                         }
                     });
             } catch (...) {
@@ -791,11 +761,11 @@ DeviceManager::ConnectInternalAsync(winrt::Windows::Devices::Enumeration::Device
             if (m_shutdownForProcessExit) co_return;
         }
 
-        auto connection = winrt::Windows::Media::Audio::AudioPlaybackConnection::TryCreateFromId(deviceId);
+        auto connection = AudioConnectionService::TryCreateFromId(deviceId);
         auto detachConnectionOnExitShutdown = wil::scope_exit([&]() noexcept {
             auto guard = m_lock.lock_shared();
             if (m_shutdownForProcessExit) {
-                DetachConnectionForProcessExit(connection);
+                AudioConnectionService::DetachForProcessExit(connection);
             }
         });
 
@@ -819,11 +789,12 @@ DeviceManager::ConnectInternalAsync(winrt::Windows::Devices::Enumeration::Device
         info.Connection = connection;
         info.IsOpen = false;
         auto weak = weak_from_this();
-        info.StateChangedToken = connection.StateChanged([weak](auto sender, auto args) {
-            if (auto self = weak.lock()) {
-                self->OnConnectionStateChanged(sender, args);
-            }
-        });
+        info.StateChangedToken =
+            AudioConnectionService::RegisterStateChanged(connection, [weak](auto sender, auto args) {
+                if (auto self = weak.lock()) {
+                    self->OnConnectionStateChanged(sender, args);
+                }
+            });
         AutoReconnectPredicate pred;
         {
             auto guard = m_lock.lock_shared();
@@ -847,19 +818,12 @@ DeviceManager::ConnectInternalAsync(winrt::Windows::Devices::Enumeration::Device
         }
         if (duplicateConnection) {
             if (!shutdownForProcessExit && info.StateChangedToken.value != 0) {
-                try {
-                    connection.StateChanged(info.StateChangedToken);
-                } catch (...) {
-                }
+                AudioConnectionService::RevokeStateChanged(connection, info.StateChangedToken);
             }
             if (shutdownForProcessExit) {
-                DetachConnectionForProcessExit(connection);
+                AudioConnectionService::DetachForProcessExit(connection);
             } else {
-                try {
-                    connection.Close();
-                } catch (...) {
-                }
-                connection = nullptr;
+                AudioConnectionService::Close(connection);
             }
             co_return;
         }
@@ -879,11 +843,11 @@ DeviceManager::ConnectInternalAsync(winrt::Windows::Devices::Enumeration::Device
                     winrt::Windows::Devices::Enumeration::DevicePickerDisplayStatusOptions::ShowDisconnectButton);
         }
 
-        co_await connection.StartAsync();
+        co_await AudioConnectionService::StartAsync(connection);
         DebugTrace(L"[DeviceManager] StartAsync completed: {0}", std::wstring(deviceId));
         if (!IsConnectAttemptCurrent(deviceId, attemptId)) co_return;
 
-        auto result = co_await connection.OpenAsync();
+        auto result = co_await AudioConnectionService::OpenAsync(connection);
         DebugTrace(L"[DeviceManager] OpenAsync completed: id={0} status={1} extended=0x{2:08X}",
                    std::wstring(deviceId),
                    OpenResultStatusName(result.Status()),

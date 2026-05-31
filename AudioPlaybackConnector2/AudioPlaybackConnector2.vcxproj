@@ -128,6 +128,7 @@
     <ClInclude Include="include\core\StringResources.hpp" />
     <ClInclude Include="include\core\ThemeHelper.hpp" />
     <ClInclude Include="include\core\Settings.hpp" />
+    <ClInclude Include="include\core\AudioConnectionService.hpp" />
     <ClInclude Include="include\core\DeviceDiscoveryService.hpp" />
     <ClInclude Include="include\core\DeviceManager.hpp" />
     <ClInclude Include="include\services\NotificationService.hpp" />
@@ -165,6 +166,7 @@
     <ClCompile Include="src\core\StringResources.cpp" />
     <ClCompile Include="src\core\ThemeHelper.cpp" />
     <ClCompile Include="src\core\Settings.cpp" />
+    <ClCompile Include="src\core\AudioConnectionService.cpp" />
     <ClCompile Include="src\core\DeviceDiscoveryService.cpp" />
     <ClCompile Include="src\core\DeviceManager.cpp" />
     <ClCompile Include="src\services\NotificationService.cpp" />
