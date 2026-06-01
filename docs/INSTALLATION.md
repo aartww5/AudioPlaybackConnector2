@@ -36,11 +36,22 @@ Import-Certificate -FilePath ".\AudioPlaybackConnector2.cer" -CertStoreLocation 
 
 ### 3) Install via App Installer
 
+Download the App Installer feed and open the local `.appinstaller` file:
+
 ```powershell
-Start-Process "ms-appinstaller:?source=https://n0ahtm.github.io/AudioPlaybackConnector2/AudioPlaybackConnector2.appinstaller"
+$installer = Join-Path $env:TEMP "AudioPlaybackConnector2.appinstaller"
+Invoke-WebRequest -Uri "https://n0ahtm.github.io/AudioPlaybackConnector2/AudioPlaybackConnector2.appinstaller" -OutFile $installer
+Start-Process $installer
 ```
 
-If protocol launch does not work, open the downloaded `.appinstaller` file directly.
+Opening a downloaded `.appinstaller` avoids the `ms-appinstaller:` web protocol, which Microsoft has disabled by
+default on consumer devices since December 2023. The protocol can be re-enabled by enterprise policy, but the local
+`.appinstaller` flow is the supported path for general GitHub release distribution.
+
+See:
+
+- [Installing Windows apps from a web page](https://learn.microsoft.com/windows/msix/app-installer/installing-windows10-apps-web)
+- [DesktopAppInstaller policy CSP](https://learn.microsoft.com/windows/client-management/mdm/policy-csp-desktopappinstaller)
 
 ### Optional fallback: direct MSIX install
 

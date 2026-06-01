@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Updated installation and troubleshooting docs to explain that `ms-appinstaller:` is disabled by default on consumer Windows devices and should not be required for GitHub release updates.
+
+### Fixed
+- Fixed the update installer button on Windows systems where the `ms-appinstaller:` protocol is disabled by downloading and opening the `.appinstaller` file locally.
+
 ## [0.5.2] - 2026-06-01
 
 ### Changed

@@ -14,15 +14,32 @@ Install both runtime dependencies once:
 
 Then retry install/launch.
 
-## App Installer link does not open
+## App Installer protocol is disabled
 
-If this command does nothing:
+Windows can report that the `ms-appinstaller:` protocol is disabled if a web install link is used:
 
 ```powershell
 Start-Process "ms-appinstaller:?source=https://n0ahtm.github.io/AudioPlaybackConnector2/AudioPlaybackConnector2.appinstaller"
 ```
 
-Download the `.appinstaller` file manually from the release and open it directly.
+This is not specific to AudioPlaybackConnector2 and is not controlled by the MSIX package manifest. Microsoft disabled
+the protocol by default on consumer devices in December 2023 after it was abused to distribute malicious MSIX packages.
+Enterprise administrators can re-enable it with the `EnableMSAppInstallerProtocol` policy, but public GitHub releases
+should avoid depending on that protocol.
+
+Download the `.appinstaller` file and open the local file instead:
+
+```powershell
+$installer = Join-Path $env:TEMP "AudioPlaybackConnector2.appinstaller"
+Invoke-WebRequest -Uri "https://n0ahtm.github.io/AudioPlaybackConnector2/AudioPlaybackConnector2.appinstaller" -OutFile $installer
+Start-Process $installer
+```
+
+Microsoft references:
+
+- [Installing Windows apps from a web page](https://learn.microsoft.com/windows/msix/app-installer/installing-windows10-apps-web)
+- [Financially motivated threat actors misusing App Installer](https://www.microsoft.com/security/blog/2023/12/28/financially-motivated-threat-actors-misusing-app-installer/)
+- [DesktopAppInstaller policy CSP](https://learn.microsoft.com/windows/client-management/mdm/policy-csp-desktopappinstaller)
 
 ## Certificate trust errors during MSIX install
 
