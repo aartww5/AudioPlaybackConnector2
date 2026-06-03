@@ -511,6 +511,7 @@ HandleFatalCrash(DWORD exceptionCode, EXCEPTION_POINTERS* exceptionPointers, std
 
     // Keep fatal-exception handling minimal and best-effort: avoid std::format,
     // file tail reads, UI dialogs, and shell calls in potentially corrupted state.
+    util::FlushInMemoryLogTailToFile(originLabel, safeExitCode);
     PersistCrashArtifactsMinimal(safeExitCode, exceptionPointers, originLabel);
     TerminateProcess(GetCurrentProcess(), safeExitCode);
 }

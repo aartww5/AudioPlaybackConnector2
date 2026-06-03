@@ -14,6 +14,8 @@ bool EnsureDirectory(std::filesystem::path const& path);
 
 std::filesystem::path const& GetCachedLogPath();
 void WriteLogLine(std::wstring_view message) noexcept;
+void WriteDiagnosticLogLine(std::wstring_view message) noexcept;
+void FlushInMemoryLogTailToFile(std::wstring_view reason, std::uint32_t exceptionCode = 0) noexcept;
 
 class Logger {
 public:
@@ -49,12 +51,21 @@ private:
 /*------------------------------------------------------------------------------------------------------------*/
 
 void DebugTrace(std::wstring_view message) noexcept;
+void DebugTraceDiagnostic(std::wstring_view message) noexcept;
 
 template <typename... Args> inline void DebugTrace(std::wstring_view fmt, Args&&... args) noexcept {
     try {
         DebugTrace(std::vformat(fmt, std::make_wformat_args(args...)));
     } catch (...) {
         DebugTrace(fmt);
+    }
+}
+
+template <typename... Args> inline void DebugTraceDiagnostic(std::wstring_view fmt, Args&&... args) noexcept {
+    try {
+        DebugTraceDiagnostic(std::vformat(fmt, std::make_wformat_args(args...)));
+    } catch (...) {
+        DebugTraceDiagnostic(fmt);
     }
 }
 

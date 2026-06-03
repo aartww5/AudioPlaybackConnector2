@@ -425,7 +425,11 @@ winrt::Windows::Foundation::IAsyncAction DeviceManager::ReconnectAsync(winrt::hs
         if (oldConn) {
             // Revoke the event token first so no stale Closed callbacks fire.
             if (oldToken.value != 0) {
+                DebugTraceDiagnostic(L"[Diag][DeviceManager] ReconnectAsync revoke old StateChanged begin: {0}",
+                                     std::wstring(deviceId));
                 AudioConnectionService::RevokeStateChanged(oldConn, oldToken);
+                DebugTraceDiagnostic(L"[Diag][DeviceManager] ReconnectAsync revoke old StateChanged end: {0}",
+                                     std::wstring(deviceId));
             }
             // Close on a background thread – never block the UI thread.
             co_await winrt::resume_background();
@@ -436,12 +440,20 @@ winrt::Windows::Foundation::IAsyncAction DeviceManager::ReconnectAsync(winrt::hs
                 shutdownForProcessExit = m_shutdownForProcessExit;
             }
             if (shutdownForProcessExit) {
+                DebugTraceDiagnostic(L"[Diag][DeviceManager] ReconnectAsync detach old connection for exit: {0}",
+                                     std::wstring(deviceId));
                 AudioConnectionService::DetachForProcessExit(oldConn);
             } else {
+                DebugTraceDiagnostic(L"[Diag][DeviceManager] ReconnectAsync close old connection begin: {0}",
+                                     std::wstring(deviceId));
                 AudioConnectionService::Close(oldConn);
+                DebugTraceDiagnostic(L"[Diag][DeviceManager] ReconnectAsync close old connection end: {0}",
+                                     std::wstring(deviceId));
                 DebugTrace(L"[DeviceManager] ReconnectAsync old connection closed; cooling down before reconnect: {0}",
                            std::wstring(deviceId));
                 co_await winrt::resume_after(ReconnectController::ReconnectCloseCooldown());
+                DebugTraceDiagnostic(L"[Diag][DeviceManager] ReconnectAsync cooldown complete: {0}",
+                                     std::wstring(deviceId));
             }
         }
 
@@ -450,8 +462,12 @@ winrt::Windows::Foundation::IAsyncAction DeviceManager::ReconnectAsync(winrt::hs
             m_sessions.UnmarkDisconnecting(deviceId);
         }
         DeviceActivityChanged(deviceId);
+        DebugTraceDiagnostic(L"[Diag][DeviceManager] ReconnectAsync DeviceActivityChanged after old close: {0}",
+                             std::wstring(deviceId));
 
+        DebugTraceDiagnostic(L"[Diag][DeviceManager] ReconnectAsync ConnectAsync begin: {0}", std::wstring(deviceId));
         co_await ConnectAsync(deviceId);
+        DebugTraceDiagnostic(L"[Diag][DeviceManager] ReconnectAsync ConnectAsync end: {0}", std::wstring(deviceId));
 
     } catch (winrt::hresult_error const& ex) {
         ReportAsyncConnectionError(*this, deviceId, ex.message(), L"ReconnectAsync");
@@ -467,6 +483,7 @@ winrt::Windows::Foundation::IAsyncAction DeviceManager::ReconnectAsync(winrt::hs
         m_sessions.UnmarkReconnecting(deviceId);
     }
     DeviceActivityChanged(deviceId);
+    DebugTraceDiagnostic(L"[Diag][DeviceManager] ReconnectAsync end: {0}", std::wstring(deviceId));
     co_return;
 }
 
@@ -645,6 +662,8 @@ void DeviceManager::Disconnect(winrt::hstring deviceId, DisconnectReason reason)
         }
     };
     DebugTrace(L"[DeviceManager] Disconnect requested: id={0} reason={1}", std::wstring(deviceId), reasonName(reason));
+    DebugTraceDiagnostic(
+        L"[Diag][DeviceManager] Disconnect begin: id={0} reason={1}", std::wstring(deviceId), reasonName(reason));
 
     {
         auto guard = m_lock.lock_shared();
@@ -673,13 +692,24 @@ void DeviceManager::Disconnect(winrt::hstring deviceId, DisconnectReason reason)
             TrackUserActionCascadeLocked(deviceId);
             m_reconnectController.MarkUserCancelled(deviceId);
         }
+        DebugTraceDiagnostic(L"[Diag][DeviceManager] Disconnect extracted connection={0} autoReconnect={1} "
+                             L"noActiveConnections={2} connectAttemptId={3}",
+                             static_cast<bool>(connection),
+                             autoReconnect,
+                             noActiveConnections,
+                             m_connectAttemptIds[std::wstring(deviceId)]);
     }
 
-    if (noActiveConnections) StopConnectionHeartbeat();
+    if (noActiveConnections) {
+        DebugTraceDiagnostic(L"[Diag][DeviceManager] Disconnect stopping heartbeat");
+        StopConnectionHeartbeat();
+    }
 
     // Revoke the StateChanged token so the zombie cannot fire events at us.
     if (connection && stateChangedToken.value != 0) {
+        DebugTraceDiagnostic(L"[Diag][DeviceManager] Disconnect revoke StateChanged begin");
         AudioConnectionService::RevokeStateChanged(connection, stateChangedToken);
+        DebugTraceDiagnostic(L"[Diag][DeviceManager] Disconnect revoke StateChanged end");
     }
 
     // Move the connection to the zombie list. Its destructor (which calls Close())
@@ -705,13 +735,29 @@ void DeviceManager::Disconnect(winrt::hstring deviceId, DisconnectReason reason)
 
     if (reason != DisconnectReason::Cleanup && !isReconnecting && !powerTransitionSuspended) {
         if (reason == DisconnectReason::UserInitiatedCascade) {
+            DebugTraceDiagnostic(L"[Diag][DeviceManager] Disconnect cascade restore request begin: {0}",
+                                 std::wstring(deviceId));
             RestoreCascadeConnectionDetached(deviceId);
+            DebugTraceDiagnostic(L"[Diag][DeviceManager] Disconnect cascade restore request end: {0}",
+                                 std::wstring(deviceId));
         } else {
+            DebugTraceDiagnostic(L"[Diag][DeviceManager] Disconnect DeviceDisconnected event begin: {0}",
+                                 std::wstring(deviceId));
             DeviceDisconnected(deviceId);
+            DebugTraceDiagnostic(L"[Diag][DeviceManager] Disconnect DeviceDisconnected event end: {0}",
+                                 std::wstring(deviceId));
+            DebugTraceDiagnostic(L"[Diag][DeviceManager] Disconnect DeviceStatusChanged event begin: {0}",
+                                 std::wstring(deviceId));
             DeviceStatusChanged(
                 deviceId, L"", winrt::Windows::Devices::Enumeration::DevicePickerDisplayStatusOptions::None);
+            DebugTraceDiagnostic(L"[Diag][DeviceManager] Disconnect DeviceStatusChanged event end: {0}",
+                                 std::wstring(deviceId));
             if (reason == DisconnectReason::Unexpected && autoReconnect) {
+                DebugTraceDiagnostic(L"[Diag][DeviceManager] Disconnect ScheduleReconnect begin: {0}",
+                                     std::wstring(deviceId));
                 ScheduleReconnect(deviceId);
+                DebugTraceDiagnostic(L"[Diag][DeviceManager] Disconnect ScheduleReconnect end: {0}",
+                                     std::wstring(deviceId));
             }
         }
     }
@@ -724,6 +770,8 @@ void DeviceManager::Disconnect(winrt::hstring deviceId, DisconnectReason reason)
         }
     }
     DeviceActivityChanged(deviceId);
+    DebugTraceDiagnostic(L"[Diag][DeviceManager] Disconnect DeviceActivityChanged emitted: {0}",
+                         std::wstring(deviceId));
 
     // Close all zombie connections on a background thread. If Close() blocks
     // (e.g. for old UI-thread-bound connections) it will not freeze the caller.
@@ -733,6 +781,7 @@ void DeviceManager::Disconnect(winrt::hstring deviceId, DisconnectReason reason)
         zombies = m_sessions.TakeZombieConnections();
     }
     if (!zombies.empty()) {
+        DebugTraceDiagnostic(L"[Diag][DeviceManager] Disconnect zombie cleanup count={0}", zombies.size());
         bool shutdownForProcessExit = false;
         {
             auto guard = m_lock.lock_shared();
@@ -761,6 +810,8 @@ void DeviceManager::Disconnect(winrt::hstring deviceId, DisconnectReason reason)
     }
 
     LogConnectionSnapshot(winrt::hstring(L"disconnect:") + winrt::hstring(reasonName(reason)));
+    DebugTraceDiagnostic(
+        L"[Diag][DeviceManager] Disconnect end: id={0} reason={1}", std::wstring(deviceId), reasonName(reason));
 }
 
 void DeviceManager::ReportConnectionFailure(winrt::hstring const& deviceId,
@@ -917,13 +968,32 @@ DeviceManager::ConnectInternalAsync(winrt::Windows::Devices::Enumeration::Device
                     m_reconnectController.ClearAttempts(deviceId);
                     m_userActionCascadeIds.erase(deviceId);
                 }
+                DebugTraceDiagnostic(L"[Diag][DeviceManager] Open success DeviceConnected event begin: id={0} "
+                                     L"attempt={1} isReconnecting={2}",
+                                     std::wstring(deviceId),
+                                     attemptId,
+                                     isReconnecting);
                 DeviceConnected(deviceId);
+                DebugTraceDiagnostic(L"[Diag][DeviceManager] Open success DeviceConnected event end: id={0}",
+                                     std::wstring(deviceId));
+                DebugTraceDiagnostic(L"[Diag][DeviceManager] Open success DeviceStatusChanged event begin: id={0}",
+                                     std::wstring(deviceId));
                 DeviceStatusChanged(
                     deviceId,
                     winrt::hstring(_("Connected")),
                     winrt::Windows::Devices::Enumeration::DevicePickerDisplayStatusOptions::ShowDisconnectButton);
+                DebugTraceDiagnostic(L"[Diag][DeviceManager] Open success DeviceStatusChanged event end: id={0}",
+                                     std::wstring(deviceId));
+                DebugTraceDiagnostic(L"[Diag][DeviceManager] Open success snapshot begin: id={0}",
+                                     std::wstring(deviceId));
                 LogConnectionSnapshot(L"open-success");
+                DebugTraceDiagnostic(L"[Diag][DeviceManager] Open success snapshot end: id={0}",
+                                     std::wstring(deviceId));
+                DebugTraceDiagnostic(L"[Diag][DeviceManager] Open success heartbeat start begin: id={0}",
+                                     std::wstring(deviceId));
                 StartConnectionHeartbeat();
+                DebugTraceDiagnostic(L"[Diag][DeviceManager] Open success heartbeat start end: id={0}",
+                                     std::wstring(deviceId));
                 break;
             }
             case winrt::Windows::Media::Audio::AudioPlaybackConnectionOpenResultStatus::RequestTimedOut:
@@ -1002,15 +1072,32 @@ void DeviceManager::PruneUserActionCascadeLocked(std::chrono::steady_clock::time
 void DeviceManager::RestoreCascadeConnectionDetached(winrt::hstring deviceId) {
     {
         auto guard = m_lock.lock_exclusive();
-        if (m_shutdownForProcessExit || m_powerTransitionSuspended || m_sessions.HasConnection(deviceId)) return;
-        if (!m_cascadeRestoreIds.insert(deviceId).second) return;
+        if (m_shutdownForProcessExit || m_powerTransitionSuspended || m_sessions.HasConnection(deviceId)) {
+            DebugTraceDiagnostic(L"[Diag][DeviceManager] Cascade restore skipped before schedule: id={0} shutdown={1} "
+                                 L"powerSuspended={2} hasConnection={3}",
+                                 std::wstring(deviceId),
+                                 m_shutdownForProcessExit,
+                                 m_powerTransitionSuspended,
+                                 m_sessions.HasConnection(deviceId));
+            return;
+        }
+        if (!m_cascadeRestoreIds.insert(deviceId).second) {
+            DebugTraceDiagnostic(L"[Diag][DeviceManager] Cascade restore skipped: already pending {0}",
+                                 std::wstring(deviceId));
+            return;
+        }
     }
 
     DebugTrace(L"[DeviceManager] Cascade restore scheduled: {0}", std::wstring(deviceId));
+    DebugTraceDiagnostic(L"[Diag][DeviceManager] Cascade restore DeviceStatusChanged begin: {0}",
+                         std::wstring(deviceId));
     DeviceStatusChanged(deviceId,
                         winrt::hstring(_("Reconnecting")),
                         winrt::Windows::Devices::Enumeration::DevicePickerDisplayStatusOptions::ShowProgress);
+    DebugTraceDiagnostic(L"[Diag][DeviceManager] Cascade restore DeviceStatusChanged end: {0}", std::wstring(deviceId));
     DeviceActivityChanged(deviceId);
+    DebugTraceDiagnostic(L"[Diag][DeviceManager] Cascade restore DeviceActivityChanged emitted: {0}",
+                         std::wstring(deviceId));
 
     auto weak = weak_from_this();
     [](std::weak_ptr<DeviceManager> weak, winrt::hstring id) -> winrt::fire_and_forget {
@@ -1040,6 +1127,12 @@ void DeviceManager::RestoreCascadeConnectionDetached(winrt::hstring deviceId) {
                                  self->m_sessions.HasConnection(id);
                     shouldWait = self->m_sessions.HasBusyOperations() || self->m_reconnectController.HasPendingTimers();
                 }
+                DebugTraceDiagnostic(L"[Diag][DeviceManager] Cascade restore wait poll id={0} waitCount={1} "
+                                     L"shouldWait={2} shouldStop={3}",
+                                     std::wstring(id),
+                                     waitCount,
+                                     shouldWait,
+                                     shouldStop);
                 if (shouldStop) co_return;
                 if (!shouldWait) break;
                 co_await winrt::resume_after(c_cascadeRestorePollInterval);
@@ -1049,12 +1142,16 @@ void DeviceManager::RestoreCascadeConnectionDetached(winrt::hstring deviceId) {
                 auto guard = self->m_lock.lock_shared();
                 if (self->m_shutdownForProcessExit || self->m_powerTransitionSuspended ||
                     self->m_sessions.HasConnection(id)) {
+                    DebugTraceDiagnostic(L"[Diag][DeviceManager] Cascade restore stopped before reconnect: {0}",
+                                         std::wstring(id));
                     co_return;
                 }
             }
 
             DebugTrace(L"[DeviceManager] Cascade restore starting: {0}", std::wstring(id));
+            DebugTraceDiagnostic(L"[Diag][DeviceManager] Cascade restore ReconnectAsync begin: {0}", std::wstring(id));
             co_await self->ReconnectAsync(id);
+            DebugTraceDiagnostic(L"[Diag][DeviceManager] Cascade restore ReconnectAsync end: {0}", std::wstring(id));
         } catch (...) {
             util::DebugTraceUnknownException(L"[DeviceManager] Cascade restore ignored exception");
         }
@@ -1110,21 +1207,41 @@ void DeviceManager::OnConnectionStateChanged(winrt::Windows::Media::Audio::Audio
     bool isUserActionCascade = false;
     {
         auto guard = m_lock.lock_exclusive();
-        if (m_sessions.IsDisconnecting(id)) return;
-        if (m_sessions.IsReconnecting(id)) return; // reconnect in progress – ignore stale Closed events
+        if (m_sessions.IsDisconnecting(id)) {
+            DebugTraceDiagnostic(L"[Diag][DeviceManager] StateChanged Closed ignored: disconnecting {0}",
+                                 std::wstring(id));
+            return;
+        }
+        if (m_sessions.IsReconnecting(id)) {
+            DebugTraceDiagnostic(L"[Diag][DeviceManager] StateChanged Closed ignored: reconnecting {0}",
+                                 std::wstring(id));
+            return; // reconnect in progress – ignore stale Closed events
+        }
 
         auto info = m_sessions.FindConnection(id);
-        if (!info) return;
+        if (!info) {
+            DebugTraceDiagnostic(L"[Diag][DeviceManager] StateChanged Closed ignored: no session {0}",
+                                 std::wstring(id));
+            return;
+        }
 
         // Ignore stale callbacks from an older connection object that was already replaced.
-        if (!info->Connection || info->Connection != sender) return;
+        if (!info->Connection || info->Connection != sender) {
+            DebugTraceDiagnostic(L"[Diag][DeviceManager] StateChanged Closed ignored: stale sender {0}",
+                                 std::wstring(id));
+            return;
+        }
         isUserActionCascade = ConsumeUserActionCascadeLocked(id);
     }
 
     if (isUserActionCascade) {
         DebugTrace(L"[DeviceManager] StateChanged Closed treated as user-action cascade: {0}", std::wstring(id));
+        DebugTraceDiagnostic(L"[Diag][DeviceManager] StateChanged Closed dispatching UserInitiatedCascade: {0}",
+                             std::wstring(id));
         Disconnect(id, DisconnectReason::UserInitiatedCascade);
     } else {
+        DebugTraceDiagnostic(L"[Diag][DeviceManager] StateChanged Closed dispatching Unexpected: {0}",
+                             std::wstring(id));
         Disconnect(id, DisconnectReason::Unexpected);
     }
 }

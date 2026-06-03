@@ -282,27 +282,50 @@ void TrayController::ShowNotification(std::wstring const& title, std::wstring co
 
 void TrayController::UpdateTooltipFromConnections() {
     if (!m_trayIcon || !m_deviceManager) return;
+    DebugTraceDiagnostic(L"[Diag][TrayController] UpdateTooltipFromConnections begin");
     auto connected = m_deviceManager->GetConnectedDevices();
+    DebugTraceDiagnostic(L"[Diag][TrayController] UpdateTooltipFromConnections connectedCount={0}", connected.size());
     if (connected.empty()) {
+        DebugTraceDiagnostic(L"[Diag][TrayController] UpdateTooltipFromConnections set empty tooltip");
         m_trayIcon->SetTooltip(_("AppName"));
     } else {
         std::wstring tip = std::wstring(_("AppName")) + L"\n";
         for (const auto& c : connected) {
+            DebugTraceDiagnostic(L"[Diag][TrayController] UpdateTooltipFromConnections device={0}",
+                                 std::wstring(c.Device.Name()));
             tip += c.Device.Name();
             tip += L"\n";
         }
         m_trayIcon->SetTooltip(tip);
     }
+    DebugTraceDiagnostic(L"[Diag][TrayController] UpdateTooltipFromConnections end");
 }
 
 void TrayController::RefreshDevicePickerState() {
-    if (m_isTearingDown.load()) return;
-    if (!m_devicePickerView) return;
-    if (m_pickerFlyoutState.load() != PickerFlyoutState::Open) return;
-    if (!m_pickerFlyout || !m_pickerFlyout.Content()) return;
+    DebugTraceDiagnostic(L"[Diag][TrayController] RefreshDevicePickerState begin");
+    if (m_isTearingDown.load()) {
+        DebugTraceDiagnostic(L"[Diag][TrayController] RefreshDevicePickerState skipped: tearing down");
+        return;
+    }
+    if (!m_devicePickerView) {
+        DebugTraceDiagnostic(L"[Diag][TrayController] RefreshDevicePickerState skipped: no view");
+        return;
+    }
+    auto flyoutState = m_pickerFlyoutState.load();
+    if (flyoutState != PickerFlyoutState::Open) {
+        DebugTraceDiagnostic(L"[Diag][TrayController] RefreshDevicePickerState skipped: flyout state={0}",
+                             static_cast<int>(flyoutState));
+        return;
+    }
+    if (!m_pickerFlyout || !m_pickerFlyout.Content()) {
+        DebugTraceDiagnostic(L"[Diag][TrayController] RefreshDevicePickerState skipped: no flyout content");
+        return;
+    }
     try {
         auto impl = m_devicePickerView.as<winrt::AudioPlaybackConnector2::implementation::DevicePickerView>();
+        DebugTraceDiagnostic(L"[Diag][TrayController] RefreshDevicePickerState RefreshDeviceStates begin");
         impl->RefreshDeviceStates();
+        DebugTraceDiagnostic(L"[Diag][TrayController] RefreshDevicePickerState RefreshDeviceStates end");
     } catch (winrt::hresult_error const& ex) {
         util::DebugTraceException(L"[TrayController] ERROR: failed to refresh picker device state", ex);
     } catch (std::exception const& ex) {
@@ -310,6 +333,7 @@ void TrayController::RefreshDevicePickerState() {
     } catch (...) {
         util::DebugTraceUnknownException(L"[TrayController] ERROR: failed to refresh picker device state");
     }
+    DebugTraceDiagnostic(L"[Diag][TrayController] RefreshDevicePickerState end");
 }
 
 void TrayController::OnThemeChanged() {

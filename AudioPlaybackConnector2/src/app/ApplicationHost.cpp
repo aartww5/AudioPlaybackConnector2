@@ -90,6 +90,7 @@ void ApplicationHost::PerformTeardown(bool saveLastConnected) noexcept {
         Gdiplus::GdiplusShutdown(m_gdiplusToken);
         m_gdiplusToken = 0;
     }
+    util::FlushInMemoryLogTailToFile(L"app-teardown");
 }
 
 void ApplicationHost::Shutdown() noexcept {
@@ -441,15 +442,21 @@ void ApplicationHost::RunOnUIThread(std::function<void()> work) {
     if (!m_dispatcherQueue) return;
     if (m_dispatcherQueue.HasThreadAccess()) {
         if (m_exiting.load()) return;
+        DebugTraceDiagnostic(L"[Diag][App] RunOnUIThread direct begin");
         work();
+        DebugTraceDiagnostic(L"[Diag][App] RunOnUIThread direct end");
     } else {
         auto weak = weak_from_this();
-        m_dispatcherQueue.TryEnqueue(winrt::Microsoft::UI::Dispatching::DispatcherQueuePriority::Normal,
-                                     [weak, work = std::move(work)]() {
-                                         auto self = weak.lock();
-                                         if (!self || self->m_exiting.load()) return;
-                                         work();
-                                     });
+        DebugTraceDiagnostic(L"[Diag][App] RunOnUIThread enqueue requested");
+        auto enqueued = m_dispatcherQueue.TryEnqueue(
+            winrt::Microsoft::UI::Dispatching::DispatcherQueuePriority::Normal, [weak, work = std::move(work)]() {
+                auto self = weak.lock();
+                if (!self || self->m_exiting.load()) return;
+                DebugTraceDiagnostic(L"[Diag][App] RunOnUIThread enqueued begin");
+                work();
+                DebugTraceDiagnostic(L"[Diag][App] RunOnUIThread enqueued end");
+            });
+        DebugTraceDiagnostic(L"[Diag][App] RunOnUIThread enqueue result={0}", enqueued);
     }
 }
 
@@ -457,24 +464,35 @@ void ApplicationHost::RefreshTrayVisualState(bool forceErrorWhenIdle) {
     if (m_exiting.load() || !m_trayController || !m_deviceManager) return;
     if (!m_hwnd || !IsWindow(m_hwnd)) return;
 
+    DebugTraceDiagnostic(L"[Diag][App] RefreshTrayVisualState begin forceErrorWhenIdle={0}", forceErrorWhenIdle);
     const bool hasBusyOperations = m_deviceManager->HasBusyOperations();
     const bool hasConnections = m_deviceManager->HasConnections();
+    DebugTraceDiagnostic(
+        L"[Diag][App] RefreshTrayVisualState state busy={0} hasConnections={1}", hasBusyOperations, hasConnections);
 
     if (forceErrorWhenIdle) {
+        DebugTraceDiagnostic(L"[Diag][App] RefreshTrayVisualState applying forced error/connected state");
         KillTimer(m_hwnd, c_timerAnimation);
         m_trayController->SetState(hasConnections ? TrayIconState::Connected : TrayIconState::Error);
     } else if (hasBusyOperations) {
+        DebugTraceDiagnostic(L"[Diag][App] RefreshTrayVisualState applying connecting state");
         m_trayController->SetState(TrayIconState::Connecting);
         SetTimer(m_hwnd, c_timerAnimation, 200, nullptr);
     } else {
+        DebugTraceDiagnostic(L"[Diag][App] RefreshTrayVisualState applying idle/connected state");
         KillTimer(m_hwnd, c_timerAnimation);
         m_trayController->SetState(hasConnections ? TrayIconState::Connected : TrayIconState::Idle);
     }
 
     if (!forceErrorWhenIdle) {
+        DebugTraceDiagnostic(L"[Diag][App] RefreshTrayVisualState update tooltip begin");
         m_trayController->UpdateTooltipFromConnections();
+        DebugTraceDiagnostic(L"[Diag][App] RefreshTrayVisualState update tooltip end");
     }
+    DebugTraceDiagnostic(L"[Diag][App] RefreshTrayVisualState picker refresh begin");
     m_trayController->RefreshDevicePickerState();
+    DebugTraceDiagnostic(L"[Diag][App] RefreshTrayVisualState picker refresh end");
+    DebugTraceDiagnostic(L"[Diag][App] RefreshTrayVisualState end");
 }
 
 void ApplicationHost::SetupDeviceEvents() {
@@ -557,23 +575,34 @@ void ApplicationHost::ExitApplication() {
 void ApplicationHost::OnDeviceConnected(winrt::hstring const& id) {
     if (m_exiting.load() || !m_settings || !m_deviceManager || !m_notificationService || !m_trayController) return;
     DebugTrace(L"[App] OnDeviceConnected: {0}", std::wstring(id));
+    DebugTraceDiagnostic(L"[Diag][App] OnDeviceConnected begin: {0}", std::wstring(id));
 
     // Resolve device name before acquiring the settings lock to avoid lock ordering issues.
     winrt::hstring deviceName = id;
     bool isStillConnected = false;
-    for (const auto& c : m_deviceManager->GetConnectedDevices()) {
+    DebugTraceDiagnostic(L"[Diag][App] OnDeviceConnected get connected devices begin");
+    auto connectedDevices = m_deviceManager->GetConnectedDevices();
+    DebugTraceDiagnostic(L"[Diag][App] OnDeviceConnected connected devices count={0}", connectedDevices.size());
+    for (const auto& c : connectedDevices) {
         if (c.Device.Id() == id) {
             deviceName = c.Device.Name();
             isStillConnected = true;
             break;
         }
     }
-    if (!isStillConnected) return;
+    DebugTraceDiagnostic(L"[Diag][App] OnDeviceConnected resolved name={0} isStillConnected={1}",
+                         std::wstring(deviceName),
+                         isStillConnected);
+    if (!isStillConnected) {
+        DebugTraceDiagnostic(L"[Diag][App] OnDeviceConnected end: no longer connected");
+        return;
+    }
 
     // Check-and-insert under a single exclusive lock to prevent duplicate entries.
     bool addedNew = false;
     bool updatedLastConnected = false;
     {
+        DebugTraceDiagnostic(L"[Diag][App] OnDeviceConnected settings update begin");
         auto locked = m_settings->LockExclusiveData();
         bool alreadyKnown = std::ranges::any_of(locked->Devices, [&](const auto& d) { return d.Id == id; });
         if (!alreadyKnown) {
@@ -591,26 +620,41 @@ void ApplicationHost::OnDeviceConnected(winrt::hstring const& id) {
         }
         locked->LastConnectedIds.insert(locked->LastConnectedIds.begin(), std::wstring(id));
         updatedLastConnected = true;
+        DebugTraceDiagnostic(
+            L"[Diag][App] OnDeviceConnected settings update staged addedNew={0} lastConnectedCount={1}",
+            addedNew,
+            locked->LastConnectedIds.size());
     }
 
     if (addedNew || updatedLastConnected) {
+        DebugTraceDiagnostic(L"[Diag][App] OnDeviceConnected settings save begin addedNew={0} updatedLastConnected={1}",
+                             addedNew,
+                             updatedLastConnected);
         m_settings->Save(GetModuleHandleW(nullptr));
+        DebugTraceDiagnostic(L"[Diag][App] OnDeviceConnected settings save end");
         if (addedNew) {
             DebugTrace(L"[App] New device added to settings: {0}", std::wstring(deviceName));
         }
     }
 
     {
+        DebugTraceDiagnostic(L"[Diag][App] OnDeviceConnected auto-reconnect sync begin");
         auto locked = m_settings->LockSharedData();
         bool autoReconnect = locked->GlobalAutoReconnect;
         auto it = std::ranges::find_if(locked->Devices, [&](const auto& d) { return d.Id == id; });
         if (it != locked->Devices.end()) autoReconnect = autoReconnect || it->AutoReconnect;
         m_deviceManager->SetAutoReconnect(id, autoReconnect);
+        DebugTraceDiagnostic(L"[Diag][App] OnDeviceConnected auto-reconnect sync end enabled={0}", autoReconnect);
     }
 
+    DebugTraceDiagnostic(L"[Diag][App] OnDeviceConnected notification begin");
     m_notificationService->ShowDeviceConnected(id, deviceName);
+    DebugTraceDiagnostic(L"[Diag][App] OnDeviceConnected notification end");
 
+    DebugTraceDiagnostic(L"[Diag][App] OnDeviceConnected refresh tray begin");
     RefreshTrayVisualState(false);
+    DebugTraceDiagnostic(L"[Diag][App] OnDeviceConnected refresh tray end");
+    DebugTraceDiagnostic(L"[Diag][App] OnDeviceConnected end");
 }
 
 void ApplicationHost::OnDeviceDisconnected(winrt::hstring const& id) {

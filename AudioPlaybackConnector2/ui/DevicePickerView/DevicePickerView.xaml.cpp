@@ -202,8 +202,14 @@ void DevicePickerView::CancelLoadDevices() {
 }
 
 void DevicePickerView::RefreshDeviceStates() {
-    if (m_isLoadingDevices.load()) return;
+    DebugTraceDiagnostic(L"[Diag][DevicePickerView] RefreshDeviceStates begin isLoading={0}",
+                         m_isLoadingDevices.load());
+    if (m_isLoadingDevices.load()) {
+        DebugTraceDiagnostic(L"[Diag][DevicePickerView] RefreshDeviceStates skipped: loading");
+        return;
+    }
     RebuildDeviceListFromCache();
+    DebugTraceDiagnostic(L"[Diag][DevicePickerView] RefreshDeviceStates end");
 }
 
 /*------------------------------------------------------------------------------------------------------------*/
@@ -253,11 +259,13 @@ void DevicePickerView::OnDeviceEnumerationFailed(bool listWasEmpty, uint64_t req
 }
 
 void DevicePickerView::RebuildDeviceListFromCache() {
+    DebugTraceDiagnostic(L"[Diag][DevicePickerView] RebuildDeviceListFromCache begin");
     m_suppressSelectionChanged.store(true);
     DeviceList().SelectedItem(nullptr);
     DeviceList().Items().Clear();
 
     if (m_viewModel.Empty()) {
+        DebugTraceDiagnostic(L"[Diag][DevicePickerView] RebuildDeviceListFromCache empty list");
         auto emptyMsg = TextBlock();
         emptyMsg.Text(winrt::hstring(_("TrayMenu_NoDevices")));
         auto brush = Application::Current().Resources().TryLookup(box_value(L"TextFillColorSecondaryBrush"));
@@ -268,13 +276,16 @@ void DevicePickerView::RebuildDeviceListFromCache() {
         }
         DeviceList().Items().Append(emptyMsg);
     } else {
-        for (auto const& device : m_viewModel.SnapshotItems()) {
+        auto items = m_viewModel.SnapshotItems();
+        DebugTraceDiagnostic(L"[Diag][DevicePickerView] RebuildDeviceListFromCache itemCount={0}", items.size());
+        for (auto const& device : items) {
             DeviceList().Items().Append(BuildDeviceListItem(device));
         }
     }
 
     DeviceList().SelectedItem(nullptr);
     m_suppressSelectionChanged.store(false);
+    DebugTraceDiagnostic(L"[Diag][DevicePickerView] RebuildDeviceListFromCache end");
 }
 
 ListViewItem DevicePickerView::BuildDeviceListItem(DevicePickerItemViewModel const& device) {
