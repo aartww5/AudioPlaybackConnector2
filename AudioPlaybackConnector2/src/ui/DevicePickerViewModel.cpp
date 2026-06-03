@@ -55,7 +55,7 @@ bool DevicePickerViewModel::IsConnected(winrt::hstring const& id) const {
     if (!manager) return false;
 
     for (const auto& connection : manager->GetConnectedDevices()) {
-        if (connection.Device.Id() == id) {
+        if (connection.Id == std::wstring(id)) {
             return true;
         }
     }

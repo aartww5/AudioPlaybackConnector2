@@ -49,6 +49,7 @@ private:
     void TryAutoReconnect();
     winrt::fire_and_forget CheckForUpdatesOnStartupAsync();
     void SaveLastConnectedDevices();
+    void ScheduleDeferredSettingsSave();
     void HandlePowerSuspend();
     void HandlePowerResume();
     void ToggleLastConnectedDeviceFromTray();
@@ -102,6 +103,7 @@ private:
     ULONG_PTR m_gdiplusToken = 0;
     bool m_notificationsAvailable = false;
     std::atomic<bool> m_exiting = false;
+    std::atomic<bool> m_settingsSavePending = false;
     PowerTransitionCoordinator m_powerTransitionCoordinator{m_exiting};
     SettingsWindowPresenter m_settingsWindowPresenter;
 };

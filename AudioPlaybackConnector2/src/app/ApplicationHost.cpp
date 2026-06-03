@@ -332,15 +332,7 @@ void ApplicationHost::ToggleLastConnectedDeviceFromTray() {
         return;
     }
 
-    bool isConnected = false;
-    for (const auto& c : m_deviceManager->GetConnectedDevices()) {
-        if (c.Device.Id() == id) {
-            isConnected = true;
-            break;
-        }
-    }
-
-    if (isConnected) {
+    if (m_deviceManager->IsDeviceConnected(id)) {
         DebugTrace(L"[App] Tray double-click: disconnecting {0}", targetId);
         m_deviceManager->Disconnect(id);
     } else {
@@ -382,20 +374,12 @@ void ApplicationHost::SaveLastConnectedDevices() {
             auto locked = m_settings->LockExclusiveData();
             locked->LastConnectedIds.clear();
             for (const auto& c : connected) {
-                try {
-                    if (c.Device) {
-                        locked->LastConnectedIds.push_back(std::wstring(c.Device.Id()));
-                    }
-                } catch (winrt::hresult_error const& ex) {
-                    util::DebugTraceException(L"[App] SaveLastConnectedDevices skipped a device", ex);
-                } catch (std::exception const& ex) {
-                    util::DebugTraceException(L"[App] SaveLastConnectedDevices skipped a device", ex);
-                } catch (...) {
-                    util::DebugTraceUnknownException(L"[App] SaveLastConnectedDevices skipped a device");
+                if (!c.Id.empty()) {
+                    locked->LastConnectedIds.push_back(c.Id);
                 }
             }
         }
-        m_settings->Save(GetModuleHandleW(nullptr));
+        ScheduleDeferredSettingsSave();
     } catch (winrt::hresult_error const& ex) {
         util::DebugTraceException(L"[App] SaveLastConnectedDevices ERROR", ex);
     } catch (std::exception const& ex) {
@@ -572,36 +556,51 @@ void ApplicationHost::ExitApplication() {
 /*//////// Device Event Handlers /////////////////////////////////////////////////////////////////////////////*/
 /*------------------------------------------------------------------------------------------------------------*/
 
+void ApplicationHost::ScheduleDeferredSettingsSave() {
+    if (m_exiting.load() || !m_settings) return;
+
+    bool expected = false;
+    if (!m_settingsSavePending.compare_exchange_strong(expected, true)) return;
+
+    auto weak = weak_from_this();
+    auto module = GetModuleHandleW(nullptr);
+    [](std::weak_ptr<ApplicationHost> weak, HINSTANCE module) -> winrt::fire_and_forget {
+        co_await winrt::resume_after(std::chrono::milliseconds(300));
+        auto self = weak.lock();
+        if (!self) co_return;
+        self->m_settingsSavePending = false;
+        if (self->m_exiting.load() || !self->m_settings) co_return;
+        try {
+            self->m_settings->Save(module);
+        } catch (winrt::hresult_error const& ex) {
+            util::DebugTraceException(L"[App] Deferred settings save ERROR", ex);
+        } catch (std::exception const& ex) {
+            util::DebugTraceException(L"[App] Deferred settings save ERROR", ex);
+        } catch (...) {
+            util::DebugTraceUnknownException(L"[App] Deferred settings save ERROR");
+        }
+    }(std::move(weak), module);
+}
+
 void ApplicationHost::OnDeviceConnected(winrt::hstring const& id) {
     if (m_exiting.load() || !m_settings || !m_deviceManager || !m_notificationService || !m_trayController) return;
     DebugTrace(L"[App] OnDeviceConnected: {0}", std::wstring(id));
     DebugTraceDiagnostic(L"[Diag][App] OnDeviceConnected begin: {0}", std::wstring(id));
 
-    // Resolve device name before acquiring the settings lock to avoid lock ordering issues.
-    winrt::hstring deviceName = id;
-    bool isStillConnected = false;
-    DebugTraceDiagnostic(L"[Diag][App] OnDeviceConnected get connected devices begin");
-    auto connectedDevices = m_deviceManager->GetConnectedDevices();
-    DebugTraceDiagnostic(L"[Diag][App] OnDeviceConnected connected devices count={0}", connectedDevices.size());
-    for (const auto& c : connectedDevices) {
-        if (c.Device.Id() == id) {
-            deviceName = c.Device.Name();
-            isStillConnected = true;
-            break;
-        }
-    }
-    DebugTraceDiagnostic(L"[Diag][App] OnDeviceConnected resolved name={0} isStillConnected={1}",
-                         std::wstring(deviceName),
-                         isStillConnected);
-    if (!isStillConnected) {
+    if (!m_deviceManager->IsDeviceConnected(id)) {
         DebugTraceDiagnostic(L"[Diag][App] OnDeviceConnected end: no longer connected");
         return;
     }
 
-    // Check-and-insert under a single exclusive lock to prevent duplicate entries.
+    winrt::hstring deviceName = ResolveKnownDeviceName(id);
+    if (auto displayName = m_deviceManager->GetConnectionDisplayName(id)) {
+        deviceName = winrt::hstring(*displayName);
+    }
+    DebugTraceDiagnostic(L"[Diag][App] OnDeviceConnected resolved name={0}", std::wstring(deviceName));
+
     bool addedNew = false;
     bool updatedLastConnected = false;
-    {
+    try {
         DebugTraceDiagnostic(L"[Diag][App] OnDeviceConnected settings update begin");
         auto locked = m_settings->LockExclusiveData();
         bool alreadyKnown = std::ranges::any_of(locked->Devices, [&](const auto& d) { return d.Id == id; });
@@ -612,6 +611,11 @@ void ApplicationHost::OnDeviceConnected(winrt::hstring const& id) {
             newDevice.AutoReconnect = locked->GlobalAutoReconnect;
             locked->Devices.push_back(std::move(newDevice));
             addedNew = true;
+        } else {
+            auto existingDevice = std::ranges::find_if(locked->Devices, [&](const auto& d) { return d.Id == id; });
+            if (existingDevice != locked->Devices.end() && existingDevice->Name != deviceName) {
+                existingDevice->Name = std::wstring(deviceName);
+            }
         }
 
         auto existing = std::ranges::find(locked->LastConnectedIds, std::wstring(id));
@@ -624,20 +628,26 @@ void ApplicationHost::OnDeviceConnected(winrt::hstring const& id) {
             L"[Diag][App] OnDeviceConnected settings update staged addedNew={0} lastConnectedCount={1}",
             addedNew,
             locked->LastConnectedIds.size());
+    } catch (winrt::hresult_error const& ex) {
+        util::DebugTraceException(L"[App] OnDeviceConnected settings update ERROR", ex);
+        return;
+    } catch (std::exception const& ex) {
+        util::DebugTraceException(L"[App] OnDeviceConnected settings update ERROR", ex);
+        return;
+    } catch (...) {
+        util::DebugTraceUnknownException(L"[App] OnDeviceConnected settings update ERROR");
+        return;
     }
 
     if (addedNew || updatedLastConnected) {
-        DebugTraceDiagnostic(L"[Diag][App] OnDeviceConnected settings save begin addedNew={0} updatedLastConnected={1}",
-                             addedNew,
-                             updatedLastConnected);
-        m_settings->Save(GetModuleHandleW(nullptr));
-        DebugTraceDiagnostic(L"[Diag][App] OnDeviceConnected settings save end");
+        DebugTraceDiagnostic(L"[Diag][App] OnDeviceConnected schedule deferred settings save");
+        ScheduleDeferredSettingsSave();
         if (addedNew) {
             DebugTrace(L"[App] New device added to settings: {0}", std::wstring(deviceName));
         }
     }
 
-    {
+    try {
         DebugTraceDiagnostic(L"[Diag][App] OnDeviceConnected auto-reconnect sync begin");
         auto locked = m_settings->LockSharedData();
         bool autoReconnect = locked->GlobalAutoReconnect;
@@ -645,11 +655,25 @@ void ApplicationHost::OnDeviceConnected(winrt::hstring const& id) {
         if (it != locked->Devices.end()) autoReconnect = autoReconnect || it->AutoReconnect;
         m_deviceManager->SetAutoReconnect(id, autoReconnect);
         DebugTraceDiagnostic(L"[Diag][App] OnDeviceConnected auto-reconnect sync end enabled={0}", autoReconnect);
+    } catch (winrt::hresult_error const& ex) {
+        util::DebugTraceException(L"[App] OnDeviceConnected auto-reconnect sync ERROR", ex);
+    } catch (std::exception const& ex) {
+        util::DebugTraceException(L"[App] OnDeviceConnected auto-reconnect sync ERROR", ex);
+    } catch (...) {
+        util::DebugTraceUnknownException(L"[App] OnDeviceConnected auto-reconnect sync ERROR");
     }
 
-    DebugTraceDiagnostic(L"[Diag][App] OnDeviceConnected notification begin");
-    m_notificationService->ShowDeviceConnected(id, deviceName);
-    DebugTraceDiagnostic(L"[Diag][App] OnDeviceConnected notification end");
+    try {
+        DebugTraceDiagnostic(L"[Diag][App] OnDeviceConnected notification begin");
+        m_notificationService->ShowDeviceConnected(id, deviceName);
+        DebugTraceDiagnostic(L"[Diag][App] OnDeviceConnected notification end");
+    } catch (winrt::hresult_error const& ex) {
+        util::DebugTraceException(L"[App] OnDeviceConnected notification ERROR", ex);
+    } catch (std::exception const& ex) {
+        util::DebugTraceException(L"[App] OnDeviceConnected notification ERROR", ex);
+    } catch (...) {
+        util::DebugTraceUnknownException(L"[App] OnDeviceConnected notification ERROR");
+    }
 
     DebugTraceDiagnostic(L"[Diag][App] OnDeviceConnected refresh tray begin");
     RefreshTrayVisualState(false);

@@ -5,6 +5,7 @@
 #include <core/ReconnectController.hpp>
 #include <chrono>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -52,6 +53,8 @@ public:
     RefreshDevicesAsync();
 
     std::vector<DeviceConnectionInfo> GetConnectedDevices() const;
+    [[nodiscard]] bool IsDeviceConnected(winrt::hstring const& deviceId) const;
+    [[nodiscard]] std::optional<std::wstring> GetConnectionDisplayName(winrt::hstring const& deviceId) const;
     bool HasConnections() const;
     bool HasBusyOperations() const;
     bool IsDeviceBusy(winrt::hstring const& deviceId) const;

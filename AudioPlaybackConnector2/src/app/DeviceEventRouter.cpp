@@ -158,12 +158,28 @@ void DeviceEventRouter::Dispatch(std::shared_ptr<State> const& state, std::funct
         state->dispatcher([state, work = std::move(work)]() mutable {
             if (!state->active.load()) return;
             DebugTraceDiagnostic(L"[Diag][DeviceEventRouter] Dispatch work begin");
-            work();
+            try {
+                work();
+            } catch (winrt::hresult_error const& ex) {
+                util::DebugTraceException(L"[DeviceEventRouter] Dispatch work ERROR", ex);
+            } catch (std::exception const& ex) {
+                util::DebugTraceException(L"[DeviceEventRouter] Dispatch work ERROR", ex);
+            } catch (...) {
+                util::DebugTraceUnknownException(L"[DeviceEventRouter] Dispatch work ERROR");
+            }
             DebugTraceDiagnostic(L"[Diag][DeviceEventRouter] Dispatch work end");
         });
     } else {
         DebugTraceDiagnostic(L"[Diag][DeviceEventRouter] Dispatch inline begin");
-        work();
+        try {
+            work();
+        } catch (winrt::hresult_error const& ex) {
+            util::DebugTraceException(L"[DeviceEventRouter] Dispatch inline ERROR", ex);
+        } catch (std::exception const& ex) {
+            util::DebugTraceException(L"[DeviceEventRouter] Dispatch inline ERROR", ex);
+        } catch (...) {
+            util::DebugTraceUnknownException(L"[DeviceEventRouter] Dispatch inline ERROR");
+        }
         DebugTraceDiagnostic(L"[Diag][DeviceEventRouter] Dispatch inline end");
     }
 }

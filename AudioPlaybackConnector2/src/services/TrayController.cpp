@@ -291,9 +291,9 @@ void TrayController::UpdateTooltipFromConnections() {
     } else {
         std::wstring tip = std::wstring(_("AppName")) + L"\n";
         for (const auto& c : connected) {
-            DebugTraceDiagnostic(L"[Diag][TrayController] UpdateTooltipFromConnections device={0}",
-                                 std::wstring(c.Device.Name()));
-            tip += c.Device.Name();
+            auto const& label = !c.Name.empty() ? c.Name : c.Id;
+            DebugTraceDiagnostic(L"[Diag][TrayController] UpdateTooltipFromConnections device={0}", label);
+            tip += label;
             tip += L"\n";
         }
         m_trayIcon->SetTooltip(tip);

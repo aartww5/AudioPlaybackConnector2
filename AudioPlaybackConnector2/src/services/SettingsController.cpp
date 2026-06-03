@@ -35,12 +35,12 @@ void SettingsController::SetGlobalAutoReconnect(bool enabled) {
         for (const auto& connection : manager->GetConnectedDevices()) {
             bool autoReconnect = enabled;
             for (const auto& device : devices) {
-                if (device.Id == connection.Device.Id()) {
+                if (device.Id == connection.Id) {
                     autoReconnect = autoReconnect || device.AutoReconnect;
                     break;
                 }
             }
-            manager->SetAutoReconnect(connection.Device.Id(), autoReconnect);
+            manager->SetAutoReconnect(winrt::hstring(connection.Id), autoReconnect);
         }
     }
 

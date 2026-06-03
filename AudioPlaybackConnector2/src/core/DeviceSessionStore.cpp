@@ -176,3 +176,10 @@ void DeviceSessionStore::UpdateConnectionIsOpen(winrt::hstring const& deviceId, 
     auto iter = m_connections.find(deviceId);
     if (iter != m_connections.end()) iter->second.IsOpen = isOpen;
 }
+
+void DeviceSessionStore::UpdateConnectionName(winrt::hstring const& deviceId, std::wstring name) {
+    auto guard = m_lock.lock_exclusive();
+    auto iter = m_connections.find(deviceId);
+    if (iter == m_connections.end()) return;
+    if (!name.empty()) iter->second.Name = std::move(name);
+}

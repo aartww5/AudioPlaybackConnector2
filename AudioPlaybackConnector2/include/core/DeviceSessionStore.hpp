@@ -1,16 +1,19 @@
 #pragma once
 
+#include <optional>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-#include <optional>
 
 /*------------------------------------------------------------------------------------------------------------*/
 /*//////// Device Connection Info //////////////////////////////////////////////////////////////////////////*/
 /*------------------------------------------------------------------------------------------------------------*/
 
 struct DeviceConnectionInfo {
-    winrt::Windows::Devices::Enumeration::DeviceInformation Device{nullptr};
+    // Plain-string metadata captured on the connect thread; never touch WinRT DeviceInformation from UI.
+    std::wstring Id;
+    std::wstring Name;
     winrt::Windows::Media::Audio::AudioPlaybackConnection Connection{nullptr};
     winrt::event_token StateChangedToken{};
     bool AutoReconnect = false;
@@ -49,6 +52,7 @@ public:
     void Clear();
     void SetConnectionAutoReconnect(winrt::hstring const& deviceId, bool enabled);
     void UpdateConnectionIsOpen(winrt::hstring const& deviceId, bool isOpen);
+    void UpdateConnectionName(winrt::hstring const& deviceId, std::wstring name);
     void InsertOrUpdateConnection(winrt::hstring const& deviceId, DeviceConnectionInfo info);
     void EraseConnection(winrt::hstring const& deviceId);
     void MarkDisconnecting(winrt::hstring const& deviceId);
