@@ -8,6 +8,7 @@ namespace {
 constexpr int c_heartbeatIntervalMinutes = 5;
 constexpr std::chrono::seconds c_userActionCascadeWindow{5};
 constexpr std::chrono::milliseconds c_cascadeRestorePollInterval{500};
+constexpr std::chrono::milliseconds c_cascadeRestoreSettleDelay{2500};
 constexpr int c_cascadeRestoreMaxBusyWaits = 20;
 
 inline void ReportAsyncConnectionError(DeviceManager& dm,
@@ -1144,12 +1145,18 @@ void DeviceManager::RestoreCascadeConnectionDetached(winrt::hstring deviceId) {
 
         auto clearPending = wil::scope_exit([self, id]() noexcept {
             try {
+                DebugTraceDiagnostic(L"[Diag][DeviceManager] Cascade restore clear pending begin: {0}",
+                                     std::wstring(id));
+                std::size_t erased = 0;
                 {
                     auto guard = self->m_lock.lock_exclusive();
-                    self->m_cascadeRestoreIds.erase(id);
+                    erased = self->m_cascadeRestoreIds.erase(id);
                 }
-                self->DeviceActivityChanged(id);
+                DebugTraceDiagnostic(L"[Diag][DeviceManager] Cascade restore clear pending end: {0} erased={1}",
+                                     std::wstring(id),
+                                     erased);
             } catch (...) {
+                util::DebugTraceUnknownException(L"[DeviceManager] Cascade restore clear pending ignored exception");
             }
         });
 
@@ -1176,20 +1183,30 @@ void DeviceManager::RestoreCascadeConnectionDetached(winrt::hstring deviceId) {
                 co_await winrt::resume_after(c_cascadeRestorePollInterval);
             }
 
+            DebugTraceDiagnostic(L"[Diag][DeviceManager] Cascade restore settle delay begin: {0} delayMs={1}",
+                                 std::wstring(id),
+                                 c_cascadeRestoreSettleDelay.count());
+            co_await winrt::resume_after(c_cascadeRestoreSettleDelay);
+            DebugTraceDiagnostic(L"[Diag][DeviceManager] Cascade restore settle delay end: {0}", std::wstring(id));
+
             {
-                auto guard = self->m_lock.lock_shared();
+                auto guard = self->m_lock.lock_exclusive();
                 if (self->m_shutdownForProcessExit || self->m_powerTransitionSuspended ||
                     self->m_sessions.HasConnection(id)) {
                     DebugTraceDiagnostic(L"[Diag][DeviceManager] Cascade restore stopped before reconnect: {0}",
                                          std::wstring(id));
                     co_return;
                 }
+                self->m_cascadeRestoreIds.erase(id);
             }
+            DebugTraceDiagnostic(L"[Diag][DeviceManager] Cascade restore pending cleared before ConnectAsync: {0}",
+                                 std::wstring(id));
 
             DebugTrace(L"[DeviceManager] Cascade restore starting: {0}", std::wstring(id));
             DebugTraceDiagnostic(L"[Diag][DeviceManager] Cascade restore ConnectAsync begin: {0}", std::wstring(id));
             co_await self->ConnectAsync(id);
             DebugTraceDiagnostic(L"[Diag][DeviceManager] Cascade restore ConnectAsync end: {0}", std::wstring(id));
+            DebugTraceDiagnostic(L"[Diag][DeviceManager] Cascade restore coroutine end: {0}", std::wstring(id));
         } catch (...) {
             util::DebugTraceUnknownException(L"[DeviceManager] Cascade restore ignored exception");
         }

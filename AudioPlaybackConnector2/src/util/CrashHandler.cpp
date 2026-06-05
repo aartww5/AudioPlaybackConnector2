@@ -497,6 +497,11 @@ inline void PersistCrashArtifactsMinimal(DWORD exceptionCode,
                          dumpResult.ErrorCode);
     }
     OutputDebugStringW(debugLine);
+
+    try {
+        util::details::AppendLogBytesDirect(util::Utf16ToUtf8(debugLine));
+    } catch (...) {
+    }
 }
 
 inline void

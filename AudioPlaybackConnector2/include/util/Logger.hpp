@@ -10,7 +10,8 @@ namespace util {
 
 namespace details {
 bool EnsureDirectory(std::filesystem::path const& path);
-}
+void AppendLogBytesDirect(std::string_view bytes) noexcept;
+} // namespace details
 
 std::filesystem::path const& GetCachedLogPath();
 void WriteLogLine(std::wstring_view message) noexcept;
