@@ -70,7 +70,8 @@ void DeviceEventRouter::Attach(std::shared_ptr<DeviceManager> deviceManager,
             state->callbacks.DeviceStatusChanged(id, status);
         });
     };
-    m_deviceActivityChangedToken = m_deviceManager->DeviceActivityChanged += [state](auto) {
+    m_deviceActivityChangedToken = m_deviceManager->DeviceActivityChanged += [state](auto id) {
+        (void)id;
         Dispatch(state, [state]() {
             if (!state->active.load() || !state->callbacks.DeviceActivityChanged) return;
             state->callbacks.DeviceActivityChanged();
@@ -125,10 +126,26 @@ void DeviceEventRouter::Dispatch(std::shared_ptr<State> const& state, std::funct
     if (state->dispatcher) {
         state->dispatcher([state, work = std::move(work)]() mutable {
             if (!state->active.load()) return;
-            work();
+            try {
+                work();
+            } catch (winrt::hresult_error const& ex) {
+                util::DebugTraceException(L"[DeviceEventRouter] Dispatch work ERROR", ex);
+            } catch (std::exception const& ex) {
+                util::DebugTraceException(L"[DeviceEventRouter] Dispatch work ERROR", ex);
+            } catch (...) {
+                util::DebugTraceUnknownException(L"[DeviceEventRouter] Dispatch work ERROR");
+            }
         });
     } else {
-        work();
+        try {
+            work();
+        } catch (winrt::hresult_error const& ex) {
+            util::DebugTraceException(L"[DeviceEventRouter] Dispatch inline ERROR", ex);
+        } catch (std::exception const& ex) {
+            util::DebugTraceException(L"[DeviceEventRouter] Dispatch inline ERROR", ex);
+        } catch (...) {
+            util::DebugTraceUnknownException(L"[DeviceEventRouter] Dispatch inline ERROR");
+        }
     }
 }
 

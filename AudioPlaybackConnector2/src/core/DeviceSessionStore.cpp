@@ -2,6 +2,14 @@
 
 #include <core/DeviceSessionStore.hpp>
 
+namespace {
+
+std::wstring DeviceKey(winrt::hstring const& deviceId) {
+    return std::wstring(deviceId);
+}
+
+} // namespace
+
 /*------------------------------------------------------------------------------------------------------------*/
 /*//////// Queries //////////////////////////////////////////////////////////////////////////////////////////*/
 /*------------------------------------------------------------------------------------------------------------*/
@@ -23,7 +31,7 @@ bool DeviceSessionStore::HasConnections() const {
 
 bool DeviceSessionStore::HasBusyOperations() const {
     auto guard = m_lock.lock_shared();
-    auto isPendingOpen = [&](winrt::hstring const& id) {
+    auto isPendingOpen = [&](std::wstring const& id) {
         auto iter = m_connections.find(id);
         return iter == m_connections.end() || !iter->second.IsOpen;
     };
@@ -31,40 +39,55 @@ bool DeviceSessionStore::HasBusyOperations() const {
     return std::ranges::any_of(m_connectingIds, isPendingOpen) || !m_reconnectingIds.empty();
 }
 
+bool DeviceSessionStore::HasBusyOperationsExcept(winrt::hstring const& deviceId) const {
+    auto guard = m_lock.lock_shared();
+    const auto excludedKey = DeviceKey(deviceId);
+    auto isOtherPendingOpen = [&](std::wstring const& id) {
+        if (id == excludedKey) return false;
+        auto iter = m_connections.find(id);
+        return iter == m_connections.end() || !iter->second.IsOpen;
+    };
+    auto isOtherDevice = [&](std::wstring const& id) { return id != excludedKey; };
+
+    return std::ranges::any_of(m_connectingIds, isOtherPendingOpen) ||
+           std::ranges::any_of(m_reconnectingIds, isOtherDevice);
+}
+
 bool DeviceSessionStore::IsDeviceBusy(winrt::hstring const& deviceId) const {
     auto guard = m_lock.lock_shared();
-    auto iter = m_connections.find(deviceId);
+    const auto key = DeviceKey(deviceId);
+    auto iter = m_connections.find(key);
     const bool hasConnection = iter != m_connections.end();
     const bool isOpen = hasConnection && iter->second.IsOpen;
-    return m_reconnectingIds.count(deviceId) > 0 || (m_connectingIds.count(deviceId) > 0 && !isOpen) ||
-           (m_disconnectingIds.count(deviceId) > 0 && hasConnection);
+    return m_reconnectingIds.count(key) > 0 || (m_connectingIds.count(key) > 0 && !isOpen) ||
+           (m_disconnectingIds.count(key) > 0 && hasConnection);
 }
 
 bool DeviceSessionStore::HasConnection(winrt::hstring const& deviceId) const {
     auto guard = m_lock.lock_shared();
-    return m_connections.count(deviceId) > 0;
+    return m_connections.count(DeviceKey(deviceId)) > 0;
 }
 
 std::optional<DeviceConnectionInfo> DeviceSessionStore::FindConnection(winrt::hstring const& deviceId) const {
     auto guard = m_lock.lock_shared();
-    auto iter = m_connections.find(deviceId);
+    auto iter = m_connections.find(DeviceKey(deviceId));
     if (iter != m_connections.end()) return iter->second;
     return std::nullopt;
 }
 
 bool DeviceSessionStore::IsDisconnecting(winrt::hstring const& deviceId) const {
     auto guard = m_lock.lock_shared();
-    return m_disconnectingIds.count(deviceId) > 0;
+    return m_disconnectingIds.count(DeviceKey(deviceId)) > 0;
 }
 
 bool DeviceSessionStore::IsReconnecting(winrt::hstring const& deviceId) const {
     auto guard = m_lock.lock_shared();
-    return m_reconnectingIds.count(deviceId) > 0;
+    return m_reconnectingIds.count(DeviceKey(deviceId)) > 0;
 }
 
 bool DeviceSessionStore::IsConnecting(winrt::hstring const& deviceId) const {
     auto guard = m_lock.lock_shared();
-    return m_connectingIds.count(deviceId) > 0;
+    return m_connectingIds.count(DeviceKey(deviceId)) > 0;
 }
 
 std::vector<winrt::Windows::Media::Audio::AudioPlaybackConnection> DeviceSessionStore::TakeZombieConnections() {
@@ -79,16 +102,16 @@ std::size_t DeviceSessionStore::ConnectionCount() const {
 
 std::optional<DeviceConnectionInfo> DeviceSessionStore::ExtractConnection(winrt::hstring const& deviceId) {
     auto guard = m_lock.lock_exclusive();
-    auto iter = m_connections.find(deviceId);
+    auto iter = m_connections.find(DeviceKey(deviceId));
     if (iter == m_connections.end()) return std::nullopt;
     auto info = std::move(iter->second);
     m_connections.erase(iter);
     return info;
 }
 
-std::vector<std::pair<winrt::hstring, DeviceConnectionInfo>> DeviceSessionStore::ExtractAllConnections() {
+std::vector<std::pair<std::wstring, DeviceConnectionInfo>> DeviceSessionStore::ExtractAllConnections() {
     auto guard = m_lock.lock_exclusive();
-    std::vector<std::pair<winrt::hstring, DeviceConnectionInfo>> result;
+    std::vector<std::pair<std::wstring, DeviceConnectionInfo>> result;
     result.reserve(m_connections.size());
     for (auto& entry : m_connections) {
         result.emplace_back(entry.first, std::move(entry.second));
@@ -97,9 +120,9 @@ std::vector<std::pair<winrt::hstring, DeviceConnectionInfo>> DeviceSessionStore:
     return result;
 }
 
-std::vector<std::pair<winrt::hstring, DeviceConnectionInfo>> DeviceSessionStore::GetConnectionsSnapshot() const {
+std::vector<std::pair<std::wstring, DeviceConnectionInfo>> DeviceSessionStore::GetConnectionsSnapshot() const {
     auto guard = m_lock.lock_shared();
-    std::vector<std::pair<winrt::hstring, DeviceConnectionInfo>> result;
+    std::vector<std::pair<std::wstring, DeviceConnectionInfo>> result;
     result.reserve(m_connections.size());
     for (auto const& entry : m_connections) {
         result.emplace_back(entry.first, entry.second);
@@ -122,42 +145,42 @@ void DeviceSessionStore::Clear() {
 
 void DeviceSessionStore::InsertOrUpdateConnection(winrt::hstring const& deviceId, DeviceConnectionInfo info) {
     auto guard = m_lock.lock_exclusive();
-    m_connections[deviceId] = std::move(info);
+    m_connections[DeviceKey(deviceId)] = std::move(info);
 }
 
 void DeviceSessionStore::EraseConnection(winrt::hstring const& deviceId) {
     auto guard = m_lock.lock_exclusive();
-    m_connections.erase(deviceId);
+    m_connections.erase(DeviceKey(deviceId));
 }
 
 void DeviceSessionStore::MarkDisconnecting(winrt::hstring const& deviceId) {
     auto guard = m_lock.lock_exclusive();
-    m_disconnectingIds.insert(deviceId);
+    m_disconnectingIds.insert(DeviceKey(deviceId));
 }
 
 void DeviceSessionStore::UnmarkDisconnecting(winrt::hstring const& deviceId) {
     auto guard = m_lock.lock_exclusive();
-    m_disconnectingIds.erase(deviceId);
+    m_disconnectingIds.erase(DeviceKey(deviceId));
 }
 
 void DeviceSessionStore::MarkReconnecting(winrt::hstring const& deviceId) {
     auto guard = m_lock.lock_exclusive();
-    m_reconnectingIds.insert(deviceId);
+    m_reconnectingIds.insert(DeviceKey(deviceId));
 }
 
 void DeviceSessionStore::UnmarkReconnecting(winrt::hstring const& deviceId) {
     auto guard = m_lock.lock_exclusive();
-    m_reconnectingIds.erase(deviceId);
+    m_reconnectingIds.erase(DeviceKey(deviceId));
 }
 
 void DeviceSessionStore::MarkConnecting(winrt::hstring const& deviceId) {
     auto guard = m_lock.lock_exclusive();
-    m_connectingIds.insert(deviceId);
+    m_connectingIds.insert(DeviceKey(deviceId));
 }
 
 void DeviceSessionStore::UnmarkConnecting(winrt::hstring const& deviceId) {
     auto guard = m_lock.lock_exclusive();
-    m_connectingIds.erase(deviceId);
+    m_connectingIds.erase(DeviceKey(deviceId));
 }
 
 void DeviceSessionStore::AddZombie(winrt::Windows::Media::Audio::AudioPlaybackConnection connection) {
@@ -167,12 +190,19 @@ void DeviceSessionStore::AddZombie(winrt::Windows::Media::Audio::AudioPlaybackCo
 
 void DeviceSessionStore::SetConnectionAutoReconnect(winrt::hstring const& deviceId, bool enabled) {
     auto guard = m_lock.lock_exclusive();
-    auto iter = m_connections.find(deviceId);
+    auto iter = m_connections.find(DeviceKey(deviceId));
     if (iter != m_connections.end()) iter->second.AutoReconnect = enabled;
 }
 
 void DeviceSessionStore::UpdateConnectionIsOpen(winrt::hstring const& deviceId, bool isOpen) {
     auto guard = m_lock.lock_exclusive();
-    auto iter = m_connections.find(deviceId);
+    auto iter = m_connections.find(DeviceKey(deviceId));
     if (iter != m_connections.end()) iter->second.IsOpen = isOpen;
+}
+
+void DeviceSessionStore::UpdateConnectionName(winrt::hstring const& deviceId, std::wstring name) {
+    auto guard = m_lock.lock_exclusive();
+    auto iter = m_connections.find(DeviceKey(deviceId));
+    if (iter == m_connections.end()) return;
+    if (!name.empty()) iter->second.Name = std::move(name);
 }

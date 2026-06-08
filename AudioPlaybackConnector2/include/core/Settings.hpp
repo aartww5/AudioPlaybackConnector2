@@ -13,6 +13,7 @@ struct DeviceSettings {
 struct SettingsData {
     bool GlobalAutoReconnect = false;
     bool StartWithWindows = false;
+    bool ShowNotifications = true;
     std::wstring Language = L"system";
     int64_t LastUpdateCheckUnixSeconds = 0;
     std::wstring LastNotifiedUpdateVersion;

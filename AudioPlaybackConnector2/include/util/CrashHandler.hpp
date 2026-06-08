@@ -7,5 +7,6 @@ namespace util::crash {
 /*------------------------------------------------------------------------------------------------------------*/
 
 void InstallCrashHandlers();
+void CheckAndPromptCrashReports();
 
 } // namespace util::crash

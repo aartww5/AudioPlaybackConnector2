@@ -88,6 +88,8 @@ void SettingsWindow::RootGrid_Loaded(IInspectable const&, RoutedEventArgs const&
     SystemHeader().Text(winrt::hstring(_("Settings_System")));
     StartWithWindowsLabel().Text(winrt::hstring(_("Settings_StartWithWindows")));
     StartWithWindowsDesc().Text(winrt::hstring(_("Settings_StartWithWindows_Desc")));
+    ShowNotificationsLabel().Text(winrt::hstring(_("Settings_ShowNotifications")));
+    ShowNotificationsDesc().Text(winrt::hstring(_("Settings_ShowNotifications_Desc")));
     AppHeader().Text(winrt::hstring(_("Settings_App")));
     VersionText().Text(winrt::hstring(BuildVersionText()));
     CopyrightText().Text(winrt::hstring(_("About_Copyright")));
@@ -175,6 +177,7 @@ void SettingsWindow::InitializeSettingsContent() {
             if (auto settingsController = self->m_settingsController) {
                 settingsController->SetGlobalAutoReconnect(s.template as<ToggleSwitch>().IsOn());
             }
+            self->RebuildDeviceList();
         }
     });
 
@@ -182,14 +185,25 @@ void SettingsWindow::InitializeSettingsContent() {
     {
         auto settings = controller->Snapshot();
         StartWithWindowsToggle().IsOn(settings.StartWithWindows);
+        ShowNotificationsToggle().IsOn(settings.ShowNotifications);
     }
     StartWithWindowsToggle().OffContent(box_value(L""));
     StartWithWindowsToggle().OnContent(box_value(L""));
+    ShowNotificationsToggle().OffContent(box_value(L""));
+    ShowNotificationsToggle().OnContent(box_value(L""));
     SyncStartupTaskStateAsync();
 
     StartWithWindowsToggle().Toggled([weak](auto const& sender, auto const& args) {
         if (auto self = weak.get()) {
             self->StartWithWindowsToggle_Toggled(sender, args);
+        }
+    });
+
+    ShowNotificationsToggle().Toggled([weak](auto const& s, auto) {
+        if (auto self = weak.get()) {
+            if (auto settingsController = self->m_settingsController) {
+                settingsController->SetShowNotifications(s.template as<ToggleSwitch>().IsOn());
+            }
         }
     });
 
@@ -371,7 +385,9 @@ void SettingsWindow::RebuildDeviceList() {
     }();
 
     // Snapshot settings through the controller, then build UI without holding any settings lock.
-    auto devices = SettingsViewModel::BuildDeviceItems(controller->Snapshot());
+    auto snapshot = controller->Snapshot();
+    auto devices = SettingsViewModel::BuildDeviceItems(snapshot);
+    bool globalAutoReconnect = snapshot.GlobalAutoReconnect;
 
     if (devices.empty()) {
         auto noDevices = TextBlock();
@@ -405,7 +421,11 @@ void SettingsWindow::RebuildDeviceList() {
         namePanel.Children().Append(name);
 
         auto subtitle = TextBlock();
-        subtitle.Text(winrt::hstring(_("Settings_PairedDevice")));
+        if (globalAutoReconnect) {
+            subtitle.Text(winrt::hstring(_("Device_AutoReconnect_Global")));
+        } else {
+            subtitle.Text(winrt::hstring(_("Settings_PairedDevice")));
+        }
         subtitle.Foreground(secondaryBrush);
         subtitle.FontSize(12);
         subtitle.TextWrapping(TextWrapping::Wrap);
@@ -414,12 +434,17 @@ void SettingsWindow::RebuildDeviceList() {
         Grid::SetColumn(namePanel, 0);
 
         auto toggle = ToggleSwitch();
-        toggle.IsOn(dev.AutoReconnect);
+        toggle.IsOn(globalAutoReconnect || dev.AutoReconnect);
+        toggle.IsEnabled(!globalAutoReconnect);
         toggle.MinWidth(64);
         toggle.VerticalAlignment(VerticalAlignment::Center);
         toggle.OffContent(box_value(L""));
         toggle.OnContent(box_value(L""));
-        ToolTipService::SetToolTip(toggle, box_value(winrt::hstring(_("Device_AutoReconnect"))));
+        if (globalAutoReconnect) {
+            ToolTipService::SetToolTip(toggle, box_value(winrt::hstring(_("Device_AutoReconnect_Global"))));
+        } else {
+            ToolTipService::SetToolTip(toggle, box_value(winrt::hstring(_("Device_AutoReconnect"))));
+        }
         auto weak = get_weak();
         toggle.Toggled([id = dev.Id, weak](auto const& s, auto) {
             if (auto self = weak.get()) {

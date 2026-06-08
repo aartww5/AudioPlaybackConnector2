@@ -24,6 +24,7 @@ public:
     using ShowSettingsCallback = std::move_only_function<void()>;
     using ExitCallback = std::move_only_function<void()>;
     using DeviceActionCallback = std::move_only_function<void(winrt::hstring)>;
+    using BulkDeviceActionCallback = std::move_only_function<void()>;
     using ToggleDeviceCallback = std::move_only_function<void()>;
 
     /*------------------------------------------------------------------------------------------------------------*/
@@ -52,7 +53,9 @@ public:
                       DeviceActionCallback connect,
                       DeviceActionCallback disconnect,
                       DeviceActionCallback reconnect,
-                      ToggleDeviceCallback toggleDevice);
+                      ToggleDeviceCallback toggleDevice,
+                      BulkDeviceActionCallback disconnectAll = nullptr,
+                      BulkDeviceActionCallback reconnectAll = nullptr);
 
     /*------------------------------------------------------------------------------------------------------------*/
     /*//////// Actions ///////////////////////////////////////////////////////////////////////////////////////////*/
@@ -61,7 +64,6 @@ public:
     void ShowTrayMenu();
     void ShowDevicePicker();
     void UpdateTooltip(std::wstring_view text);
-    void ShowNotification(std::wstring const& title, std::wstring const& body, TrayNotificationType type);
     void UpdateTooltipFromConnections();
     void RefreshDevicePickerState();
     void OnThemeChanged();
@@ -103,6 +105,8 @@ private:
     DeviceActionCallback m_connectCallback;
     DeviceActionCallback m_disconnectCallback;
     DeviceActionCallback m_reconnectCallback;
+    BulkDeviceActionCallback m_disconnectAllCallback;
+    BulkDeviceActionCallback m_reconnectAllCallback;
     ToggleDeviceCallback m_toggleDeviceCallback;
 
     UINT m_trayCallbackMsg = WM_APP + 1;

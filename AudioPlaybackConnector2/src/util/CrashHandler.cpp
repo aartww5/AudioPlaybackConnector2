@@ -480,6 +480,39 @@ inline void PersistCrashArtifactsMinimal(DWORD exceptionCode,
         dumpResult = {false, ERROR_PATH_NOT_FOUND};
     }
 
+    // Best-effort: write a minimal companion .txt next to the .dmp so the next
+    // app startup can show the crash dialog from a clean process state.
+    if (dumpResult.Success && dumpPath[0] != L'\0') {
+        wchar_t reportPath[MAX_PATH]{};
+        (void)wcscpy_s(reportPath, _countof(reportPath), dumpPath);
+        auto len = wcslen(reportPath);
+        if (len > 4) {
+            reportPath[len - 3] = L't';
+            reportPath[len - 2] = L'x';
+            reportPath[len - 1] = L't';
+        }
+        wchar_t reportContent[512]{};
+        (void)swprintf_s(reportContent,
+                         _countof(reportContent),
+                         L"ExceptionCode: 0x%08lX\r\nOrigin: %ls\r\n",
+                         exceptionCode,
+                         origin);
+        auto file = CreateFileW(
+            reportPath, GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (file != INVALID_HANDLE_VALUE) {
+            wil::unique_hfile h(file);
+            std::string utf8;
+            try {
+                utf8 = Utf16ToUtf8(reportContent);
+            } catch (...) {
+            }
+            if (!utf8.empty()) {
+                DWORD written = 0;
+                (void)WriteFile(h.get(), utf8.data(), static_cast<DWORD>(utf8.size()), &written, nullptr);
+            }
+        }
+    }
+
     wchar_t debugLine[768]{};
     if (dumpResult.Success) {
         (void)swprintf_s(debugLine,
@@ -497,6 +530,11 @@ inline void PersistCrashArtifactsMinimal(DWORD exceptionCode,
                          dumpResult.ErrorCode);
     }
     OutputDebugStringW(debugLine);
+
+    try {
+        util::details::AppendLogBytesDirect(util::Utf16ToUtf8(debugLine));
+    } catch (...) {
+    }
 }
 
 inline void
@@ -511,6 +549,7 @@ HandleFatalCrash(DWORD exceptionCode, EXCEPTION_POINTERS* exceptionPointers, std
 
     // Keep fatal-exception handling minimal and best-effort: avoid std::format,
     // file tail reads, UI dialogs, and shell calls in potentially corrupted state.
+    util::FlushInMemoryLogTailToFile(originLabel, safeExitCode);
     PersistCrashArtifactsMinimal(safeExitCode, exceptionPointers, originLabel);
     TerminateProcess(GetCurrentProcess(), safeExitCode);
 }
@@ -573,6 +612,61 @@ void InstallCrashHandlers() {
     details::g_previousInvalidParameter = _set_invalid_parameter_handler(details::InvalidParameterHandler);
     details::g_previousSigAbrtHandler = std::signal(SIGABRT, details::SignalAbortHandler);
     DebugTrace(L"[CrashHandler] Installed global crash handlers");
+}
+
+void CheckAndPromptCrashReports() {
+    try {
+        auto crashDir = details::GetCrashDirectory();
+        if (crashDir.empty() || !std::filesystem::exists(crashDir)) {
+            return;
+        }
+
+        std::vector<std::filesystem::path> reportFiles;
+        std::error_code ec;
+        for (const auto& entry : std::filesystem::directory_iterator(crashDir, ec)) {
+            if (!entry.is_regular_file(ec) || entry.path().extension() != L".txt") {
+                continue;
+            }
+
+            auto promptedMarker = entry.path();
+            promptedMarker.replace_extension(L".prompted");
+            if (!std::filesystem::exists(promptedMarker, ec)) {
+                reportFiles.push_back(entry.path());
+            }
+        }
+
+        if (reportFiles.empty()) {
+            return;
+        }
+
+        std::sort(reportFiles.begin(), reportFiles.end(), [](const auto& a, const auto& b) {
+            std::error_code ea, eb;
+            return std::filesystem::last_write_time(a, ea) > std::filesystem::last_write_time(b, eb);
+        });
+
+        auto latestReport = reportFiles.front();
+        auto latestDump = latestReport;
+        latestDump.replace_extension(L".dmp");
+
+        DWORD exceptionCode = 0;
+        auto content = details::ReadLogTail(latestReport, 256);
+        auto pos = content.find(L"ExceptionCode: 0x");
+        if (pos != std::wstring::npos) {
+            auto hexStart = pos + 17; // wcslen(L"ExceptionCode: 0x")
+            if (hexStart + 8 <= content.size()) {
+                auto hexStr = content.substr(hexStart, 8);
+                exceptionCode = static_cast<DWORD>(std::wcstoul(hexStr.c_str(), nullptr, 16));
+            }
+        }
+
+        details::ShowCrashDialogAndOfferIssue(exceptionCode, latestReport, latestDump);
+
+        auto promptedMarker = latestReport;
+        promptedMarker.replace_extension(L".prompted");
+        details::WriteUtf8File(promptedMarker, L"prompted=true\r\n");
+    } catch (...) {
+        // Best-effort: crash-report UI must never block app launch.
+    }
 }
 
 } // namespace crash

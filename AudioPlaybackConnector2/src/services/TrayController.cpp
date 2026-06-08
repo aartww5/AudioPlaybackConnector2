@@ -124,6 +124,8 @@ void TrayController::Teardown() noexcept {
     m_connectCallback = nullptr;
     m_disconnectCallback = nullptr;
     m_reconnectCallback = nullptr;
+    m_disconnectAllCallback = nullptr;
+    m_reconnectAllCallback = nullptr;
     m_toggleDeviceCallback = nullptr;
     if (m_trayIcon) {
         m_trayIcon->Remove();
@@ -149,12 +151,16 @@ void TrayController::SetCallbacks(ShowSettingsCallback showSettings,
                                   DeviceActionCallback connect,
                                   DeviceActionCallback disconnect,
                                   DeviceActionCallback reconnect,
-                                  ToggleDeviceCallback toggleDevice) {
+                                  ToggleDeviceCallback toggleDevice,
+                                  BulkDeviceActionCallback disconnectAll,
+                                  BulkDeviceActionCallback reconnectAll) {
     m_showSettingsCallback = std::move(showSettings);
     m_exitCallback = std::move(exit);
     m_connectCallback = std::move(connect);
     m_disconnectCallback = std::move(disconnect);
     m_reconnectCallback = std::move(reconnect);
+    m_disconnectAllCallback = std::move(disconnectAll);
+    m_reconnectAllCallback = std::move(reconnectAll);
     m_toggleDeviceCallback = std::move(toggleDevice);
 }
 
@@ -274,12 +280,6 @@ void TrayController::UpdateTooltip(std::wstring_view text) {
     }
 }
 
-void TrayController::ShowNotification(std::wstring const& title, std::wstring const& body, TrayNotificationType type) {
-    if (m_trayIcon) {
-        m_trayIcon->ShowNotification(title, body, type);
-    }
-}
-
 void TrayController::UpdateTooltipFromConnections() {
     if (!m_trayIcon || !m_deviceManager) return;
     auto connected = m_deviceManager->GetConnectedDevices();
@@ -288,7 +288,8 @@ void TrayController::UpdateTooltipFromConnections() {
     } else {
         std::wstring tip = std::wstring(_("AppName")) + L"\n";
         for (const auto& c : connected) {
-            tip += c.Device.Name();
+            auto const& label = !c.Name.empty() ? c.Name : c.Id;
+            tip += label;
             tip += L"\n";
         }
         m_trayIcon->SetTooltip(tip);
@@ -296,10 +297,19 @@ void TrayController::UpdateTooltipFromConnections() {
 }
 
 void TrayController::RefreshDevicePickerState() {
-    if (m_isTearingDown.load()) return;
-    if (!m_devicePickerView) return;
-    if (m_pickerFlyoutState.load() != PickerFlyoutState::Open) return;
-    if (!m_pickerFlyout || !m_pickerFlyout.Content()) return;
+    if (m_isTearingDown.load()) {
+        return;
+    }
+    if (!m_devicePickerView) {
+        return;
+    }
+    auto flyoutState = m_pickerFlyoutState.load();
+    if (flyoutState != PickerFlyoutState::Open) {
+        return;
+    }
+    if (!m_pickerFlyout || !m_pickerFlyout.Content()) {
+        return;
+    }
     try {
         auto impl = m_devicePickerView.as<winrt::AudioPlaybackConnector2::implementation::DevicePickerView>();
         impl->RefreshDeviceStates();
@@ -472,6 +482,18 @@ void TrayController::EnsureDevicePickerViewCreated() {
                 }
             }
             if (self->m_reconnectCallback) self->m_reconnectCallback(id);
+        },
+        [weak]() {
+            auto self = weak.lock();
+            if (!self || self->m_isTearingDown.load()) return;
+            DebugTrace(L"[TrayController] User disconnected all devices");
+            if (self->m_disconnectAllCallback) self->m_disconnectAllCallback();
+        },
+        [weak]() {
+            auto self = weak.lock();
+            if (!self || self->m_isTearingDown.load()) return;
+            DebugTrace(L"[TrayController] User reconnected all devices");
+            if (self->m_reconnectAllCallback) self->m_reconnectAllCallback();
         });
 }
 

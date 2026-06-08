@@ -53,8 +53,8 @@ private:
     /*//////// Member Variables //////////////////////////////////////////////////////////////////////////////////*/
     /*------------------------------------------------------------------------------------------------------------*/
 
-    std::unordered_set<winrt::hstring> m_cancelledReconnectIds;
-    std::unordered_map<winrt::hstring, std::size_t> m_reconnectTimerCounts;
-    std::unordered_map<winrt::hstring, std::size_t> m_reconnectAttempts;
+    std::unordered_set<std::wstring> m_cancelledReconnectIds;
+    std::unordered_map<std::wstring, std::size_t> m_reconnectTimerCounts;
+    std::unordered_map<std::wstring, std::size_t> m_reconnectAttempts;
     bool m_allReconnectsCancelled = false;
 };

@@ -170,25 +170,6 @@ void TrayIcon::SetTooltip(std::wstring_view text) {
     Shell_NotifyIconW(NIM_MODIFY, &m_nid);
 }
 
-void TrayIcon::ShowNotification(std::wstring_view title, std::wstring_view text, TrayNotificationType type) {
-    std::wstring t(title);
-    std::wstring m(text);
-    auto guard = m_lock.lock_exclusive();
-    if (!m_initialized) return;
-    wcsncpy_s(m_nid.szInfoTitle, t.c_str(), _TRUNCATE);
-    wcsncpy_s(m_nid.szInfo, m.c_str(), _TRUNCATE);
-
-    m_nid.uFlags |= NIF_INFO;
-    switch (type) {
-        case TrayNotificationType::Info: m_nid.dwInfoFlags = NIIF_INFO; break;
-        case TrayNotificationType::Warning: m_nid.dwInfoFlags = NIIF_WARNING; break;
-        case TrayNotificationType::Error: m_nid.dwInfoFlags = NIIF_ERROR; break;
-    }
-
-    Shell_NotifyIconW(NIM_MODIFY, &m_nid);
-    m_nid.uFlags &= ~NIF_INFO;
-}
-
 void TrayIcon::UpdateTheme() {
     CreateAllIcons();
     RefreshIcon();

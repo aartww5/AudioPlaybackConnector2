@@ -65,6 +65,7 @@ void Settings::Load(HINSTANCE hInst) {
 
         bool globalAutoReconnect = false;
         bool startWithWindows = false;
+        bool showNotifications = true;
         std::wstring language = L"system";
         int64_t lastUpdateCheckUnixSeconds = 0;
         std::wstring lastNotifiedUpdateVersion;
@@ -73,6 +74,7 @@ void Settings::Load(HINSTANCE hInst) {
 
         globalAutoReconnect = GetOptionalBoolean(json, L"globalAutoReconnect", globalAutoReconnect);
         startWithWindows = GetOptionalBoolean(json, L"startWithWindows", startWithWindows);
+        showNotifications = GetOptionalBoolean(json, L"showNotifications", showNotifications);
         lastUpdateCheckUnixSeconds = GetOptionalInt64(json, L"lastUpdateCheckUnixSeconds", lastUpdateCheckUnixSeconds);
         lastNotifiedUpdateVersion = GetOptionalString(json, L"lastNotifiedUpdateVersion", L"");
 
@@ -109,6 +111,7 @@ void Settings::Load(HINSTANCE hInst) {
         auto guard = m_lock.lock_exclusive();
         m_data.GlobalAutoReconnect = globalAutoReconnect;
         m_data.StartWithWindows = startWithWindows;
+        m_data.ShowNotifications = showNotifications;
         m_data.Language = std::move(language);
         m_data.LastUpdateCheckUnixSeconds = lastUpdateCheckUnixSeconds;
         m_data.LastNotifiedUpdateVersion = std::move(lastNotifiedUpdateVersion);
@@ -136,6 +139,8 @@ void Settings::Save(HINSTANCE hInst) {
                     winrt::Windows::Data::Json::JsonValue::CreateBooleanValue(snapshot.GlobalAutoReconnect));
         json.Insert(L"startWithWindows",
                     winrt::Windows::Data::Json::JsonValue::CreateBooleanValue(snapshot.StartWithWindows));
+        json.Insert(L"showNotifications",
+                    winrt::Windows::Data::Json::JsonValue::CreateBooleanValue(snapshot.ShowNotifications));
         json.Insert(L"language", winrt::Windows::Data::Json::JsonValue::CreateStringValue(snapshot.Language));
         json.Insert(L"lastUpdateCheckUnixSeconds",
                     winrt::Windows::Data::Json::JsonValue::CreateNumberValue(

@@ -62,6 +62,7 @@
 #include <winrt/Windows.Media.Devices.h>
 #include <winrt/Windows.ApplicationModel.h>
 #include <winrt/Windows.Storage.h>
+#include <winrt/Windows.Storage.Streams.h>
 #include <winrt/Windows.System.h>
 #include <winrt/Windows.System.Threading.h>
 #include <winrt/Windows.UI.Core.h>

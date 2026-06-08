@@ -26,6 +26,16 @@ DevicePickerView::DevicePickerView() {
             self->OnCloseClicked(sender, args);
         }
     });
+    DisconnectAllButton().Click([weak](auto const& sender, auto const& args) {
+        if (auto self = weak.get()) {
+            self->OnDisconnectAllClicked(sender, args);
+        }
+    });
+    ReconnectAllButton().Click([weak](auto const& sender, auto const& args) {
+        if (auto self = weak.get()) {
+            self->OnReconnectAllClicked(sender, args);
+        }
+    });
     DeviceList().SelectionChanged([weak](auto const& sender, auto const& args) {
         if (auto self = weak.get()) {
             self->OnDeviceSelected(sender, args);
@@ -41,14 +51,20 @@ void DevicePickerView::Initialize(std::shared_ptr<DeviceManager> manager,
                                   std::function<void()> onClose,
                                   std::function<void(winrt::hstring)> onDeviceSelected,
                                   std::function<void(winrt::hstring)> onDeviceDisconnect,
-                                  std::function<void(winrt::hstring)> onDeviceReconnect) {
+                                  std::function<void(winrt::hstring)> onDeviceReconnect,
+                                  std::function<void()> onDisconnectAll,
+                                  std::function<void()> onReconnectAll) {
     m_deviceManager = manager;
     m_viewModel.SetDeviceManager(manager);
     m_onClose = std::move(onClose);
     m_onDeviceSelected = std::move(onDeviceSelected);
     m_onDeviceDisconnect = std::move(onDeviceDisconnect);
     m_onDeviceReconnect = std::move(onDeviceReconnect);
+    m_onDisconnectAll = std::move(onDisconnectAll);
+    m_onReconnectAll = std::move(onReconnectAll);
     TitleText().Text(winrt::hstring(_("TrayMenu_SelectDevice")));
+    DisconnectAllText().Text(winrt::hstring(_("DisconnectAll")));
+    ReconnectAllText().Text(winrt::hstring(_("ReconnectAll")));
 }
 
 void DevicePickerView::LoadDevices() {
@@ -202,7 +218,9 @@ void DevicePickerView::CancelLoadDevices() {
 }
 
 void DevicePickerView::RefreshDeviceStates() {
-    if (m_isLoadingDevices.load()) return;
+    if (m_isLoadingDevices.load()) {
+        return;
+    }
     RebuildDeviceListFromCache();
 }
 
@@ -257,6 +275,12 @@ void DevicePickerView::RebuildDeviceListFromCache() {
     DeviceList().SelectedItem(nullptr);
     DeviceList().Items().Clear();
 
+    int connectedCount = 0;
+    if (auto manager = m_deviceManager.lock()) {
+        connectedCount = static_cast<int>(manager->GetConnectedDevices().size());
+    }
+    GlobalActionsPanel().Visibility(connectedCount > 1 ? Visibility::Visible : Visibility::Collapsed);
+
     if (m_viewModel.Empty()) {
         auto emptyMsg = TextBlock();
         emptyMsg.Text(winrt::hstring(_("TrayMenu_NoDevices")));
@@ -268,7 +292,8 @@ void DevicePickerView::RebuildDeviceListFromCache() {
         }
         DeviceList().Items().Append(emptyMsg);
     } else {
-        for (auto const& device : m_viewModel.SnapshotItems()) {
+        auto items = m_viewModel.SnapshotItems();
+        for (auto const& device : items) {
             DeviceList().Items().Append(BuildDeviceListItem(device));
         }
     }
@@ -388,5 +413,15 @@ void DevicePickerView::OnDeviceSelected(winrt::Windows::Foundation::IInspectable
     if (m_onDeviceSelected) {
         m_onDeviceSelected(id);
     }
+}
+
+void DevicePickerView::OnDisconnectAllClicked(winrt::Windows::Foundation::IInspectable const&,
+                                              winrt::Microsoft::UI::Xaml::RoutedEventArgs const&) {
+    if (m_onDisconnectAll) m_onDisconnectAll();
+}
+
+void DevicePickerView::OnReconnectAllClicked(winrt::Windows::Foundation::IInspectable const&,
+                                             winrt::Microsoft::UI::Xaml::RoutedEventArgs const&) {
+    if (m_onReconnectAll) m_onReconnectAll();
 }
 } // namespace winrt::AudioPlaybackConnector2::implementation

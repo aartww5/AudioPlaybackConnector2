@@ -148,7 +148,13 @@ Thumbs.db
 *.temp
 
 # -----------------------------------------------------------------------------
-# 8. Static Analysis & Logs (Generated)
+# 8. Local release bundles (scripts/release/prepare-local-release.ps1)
+# -----------------------------------------------------------------------------
+
+dist/
+
+# -----------------------------------------------------------------------------
+# 9. Static Analysis & Logs (Generated)
 # -----------------------------------------------------------------------------
 
 # Auto-generated static analysis reports

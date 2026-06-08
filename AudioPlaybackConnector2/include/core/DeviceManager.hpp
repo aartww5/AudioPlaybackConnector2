@@ -5,6 +5,7 @@
 #include <core/ReconnectController.hpp>
 #include <chrono>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -47,11 +48,15 @@ public:
     winrt::Windows::Foundation::IAsyncAction ReconnectAsync(winrt::hstring deviceId);
     void ReconnectDetached(winrt::hstring deviceId);
     void Disconnect(winrt::hstring deviceId);
+    void DisconnectAll();
+    void ReconnectAll();
     void SetAutoReconnect(winrt::hstring deviceId, bool enabled);
     winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::Devices::Enumeration::DeviceInformationCollection>
     RefreshDevicesAsync();
 
     std::vector<DeviceConnectionInfo> GetConnectedDevices() const;
+    [[nodiscard]] bool IsDeviceConnected(winrt::hstring const& deviceId) const;
+    [[nodiscard]] std::optional<std::wstring> GetConnectionDisplayName(winrt::hstring const& deviceId) const;
     bool HasConnections() const;
     bool HasBusyOperations() const;
     bool IsDeviceBusy(winrt::hstring const& deviceId) const;
@@ -79,12 +84,14 @@ private:
 
     void ReportConnectionFailure(winrt::hstring const& deviceId, winrt::hstring const& message, bool cleanupConnection);
     void Disconnect(winrt::hstring deviceId, DisconnectReason reason);
+    void Disconnect(winrt::hstring deviceId, DisconnectReason reason, bool suppressCascade);
     bool IsConnectAttemptCurrent(winrt::hstring const& deviceId, std::size_t attemptId) const;
     void TrackUserActionCascadeLocked(winrt::hstring const& deviceId);
     bool ConsumeUserActionCascadeLocked(winrt::hstring const& deviceId);
     void PruneUserActionCascadeLocked(std::chrono::steady_clock::time_point now);
     void RestoreCascadeConnectionDetached(winrt::hstring deviceId);
-    void OnConnectionStateChanged(winrt::Windows::Media::Audio::AudioPlaybackConnection sender,
+    void OnConnectionStateChanged(winrt::hstring deviceId,
+                                  winrt::Windows::Media::Audio::AudioPlaybackConnection sender,
                                   winrt::Windows::Foundation::IInspectable);
     void ScheduleReconnect(winrt::hstring deviceId);
     void StartConnectionHeartbeat();
@@ -103,8 +110,8 @@ private:
     ReconnectController m_reconnectController;
     AutoReconnectPredicate m_autoReconnectPred;
     std::unordered_map<std::wstring, std::size_t> m_connectAttemptIds;
-    std::unordered_map<winrt::hstring, std::chrono::steady_clock::time_point> m_userActionCascadeIds;
-    std::unordered_set<winrt::hstring> m_cascadeRestoreIds;
+    std::unordered_map<std::wstring, std::chrono::steady_clock::time_point> m_userActionCascadeIds;
+    std::unordered_set<std::wstring> m_cascadeRestoreIds;
     bool m_powerTransitionSuspended = false;
     bool m_shutdownForProcessExit = false;
 

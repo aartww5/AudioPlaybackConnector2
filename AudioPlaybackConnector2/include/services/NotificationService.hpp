@@ -11,19 +11,8 @@
 
 class NotificationService : public std::enable_shared_from_this<NotificationService> {
 public:
-    /*------------------------------------------------------------------------------------------------------------*/
-    /*//////// Notification Types ////////////////////////////////////////////////////////////////////////////////*/
-    /*------------------------------------------------------------------------------------------------------------*/
-
-    enum class FallbackNotificationType { Info, Warning, Error };
-
-    /*------------------------------------------------------------------------------------------------------------*/
-    /*//////// Callback Types ////////////////////////////////////////////////////////////////////////////////////*/
-    /*------------------------------------------------------------------------------------------------------------*/
-
     using ReconnectRequestedCallback = std::function<void(winrt::hstring deviceId)>;
-    using FallbackNotificationCallback =
-        std::function<void(std::wstring const& title, std::wstring const& body, FallbackNotificationType type)>;
+    using ShouldShowNotificationCallback = std::function<bool()>;
 
     /*------------------------------------------------------------------------------------------------------------*/
     /*//////// Lifecycle /////////////////////////////////////////////////////////////////////////////////////////*/
@@ -45,7 +34,7 @@ public:
     /*------------------------------------------------------------------------------------------------------------*/
 
     void SetReconnectCallback(ReconnectRequestedCallback callback);
-    void SetFallbackNotifier(FallbackNotificationCallback callback);
+    void SetShouldShowNotificationCallback(ShouldShowNotificationCallback callback);
 
     /*------------------------------------------------------------------------------------------------------------*/
     /*//////// Notifications /////////////////////////////////////////////////////////////////////////////////////*/
@@ -76,23 +65,13 @@ private:
     [[nodiscard]] bool IsStatusNotificationGenerationCurrent(uint64_t generation) const;
     // NOTE: This is a coroutine. All parameters are passed by value intentionally to ensure
     // they remain valid across suspension points. Do NOT change to const&.
-    winrt::fire_and_forget ShowToastOrFallbackAsync(std::wstring xml,
-                                                    winrt::hstring group,
-                                                    winrt::hstring tag,
-                                                    std::vector<winrt::hstring> tagsToRemove,
-                                                    uint64_t generation,
-                                                    winrt::Windows::Foundation::DateTime expiration,
-                                                    std::wstring fallbackTitle,
-                                                    std::wstring fallbackBody,
-                                                    FallbackNotificationType fallbackType);
-    void ShowStatusToastOrFallback(std::wstring const& xml,
-                                   winrt::Windows::Foundation::DateTime const& expiration,
-                                   std::wstring const& fallbackTitle,
-                                   std::wstring const& fallbackBody,
-                                   FallbackNotificationType fallbackType);
-    void ShowFallbackNotification(std::wstring const& fallbackTitle,
-                                  std::wstring const& fallbackBody,
-                                  FallbackNotificationType fallbackType);
+    winrt::fire_and_forget ShowToastAsync(std::wstring xml,
+                                          winrt::hstring group,
+                                          winrt::hstring tag,
+                                          std::vector<winrt::hstring> tagsToRemove,
+                                          uint64_t generation,
+                                          winrt::Windows::Foundation::DateTime expiration);
+    void ShowStatusToast(std::wstring const& xml, winrt::Windows::Foundation::DateTime const& expiration);
 
     /*------------------------------------------------------------------------------------------------------------*/
     /*//////// Member Variables //////////////////////////////////////////////////////////////////////////////////*/
@@ -101,7 +80,7 @@ private:
     winrt::Microsoft::Windows::AppNotifications::AppNotificationManager m_notificationManager{nullptr};
     winrt::event_token m_notificationInvokedToken{};
     ReconnectRequestedCallback m_reconnectCallback;
-    FallbackNotificationCallback m_fallbackNotifier;
+    ShouldShowNotificationCallback m_shouldShowNotificationCallback;
     std::vector<winrt::hstring> m_statusNotificationTags;
     uint64_t m_statusNotificationGeneration = 0;
     bool m_notificationsRegistered = false;

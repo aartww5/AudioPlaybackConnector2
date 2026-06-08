@@ -25,7 +25,9 @@ struct DevicePickerView : DevicePickerViewT<DevicePickerView> {
                     std::function<void()> onClose,
                     std::function<void(winrt::hstring)> onDeviceSelected,
                     std::function<void(winrt::hstring)> onDeviceDisconnect = nullptr,
-                    std::function<void(winrt::hstring)> onDeviceReconnect = nullptr);
+                    std::function<void(winrt::hstring)> onDeviceReconnect = nullptr,
+                    std::function<void()> onDisconnectAll = nullptr,
+                    std::function<void()> onReconnectAll = nullptr);
     void LoadDevices();
     void CancelLoadDevices();
     void RefreshDeviceStates();
@@ -35,6 +37,10 @@ private:
                         winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
     void OnDeviceSelected(winrt::Windows::Foundation::IInspectable const&,
                           winrt::Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&);
+    void OnDisconnectAllClicked(winrt::Windows::Foundation::IInspectable const&,
+                                winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+    void OnReconnectAllClicked(winrt::Windows::Foundation::IInspectable const&,
+                               winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
 
     void ApplyDeviceResults(winrt::Windows::Devices::Enumeration::DeviceInformationCollection const& devices,
                             bool listWasEmpty,
@@ -48,6 +54,8 @@ private:
     std::function<void(winrt::hstring)> m_onDeviceSelected;
     std::function<void(winrt::hstring)> m_onDeviceDisconnect;
     std::function<void(winrt::hstring)> m_onDeviceReconnect;
+    std::function<void()> m_onDisconnectAll;
+    std::function<void()> m_onReconnectAll;
     std::weak_ptr<DeviceManager> m_deviceManager;
     std::atomic<bool> m_isLoadingDevices = false;
     std::atomic<bool> m_loadDevicesCancelled = false;

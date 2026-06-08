@@ -5,9 +5,99 @@ namespace util {
 
 namespace details {
 constexpr std::size_t c_maxQueuedLogMessages = 10000;
+constexpr std::size_t c_inMemoryLogTailLineCount = 100;
+
+struct InMemoryLogTail {
+    void Add(std::string line) noexcept {
+        try {
+            std::lock_guard lock(Mutex);
+            Lines[NextIndex] = std::move(line);
+            NextIndex = (NextIndex + 1) % Lines.size();
+            if (Count < Lines.size()) ++Count;
+        } catch (...) {
+        }
+    }
+
+    bool TrySnapshot(std::vector<std::string>& snapshot) noexcept {
+        try {
+            if (!Mutex.try_lock()) return false;
+            std::unique_lock lock(Mutex, std::adopt_lock);
+            snapshot.clear();
+            snapshot.reserve(Count);
+
+            auto start = Count == Lines.size() ? NextIndex : 0;
+            for (std::size_t i = 0; i < Count; ++i) {
+                auto index = (start + i) % Lines.size();
+                snapshot.push_back(Lines[index]);
+            }
+            return true;
+        } catch (...) {
+            snapshot.clear();
+            return false;
+        }
+    }
+
+    std::mutex Mutex;
+    std::array<std::string, c_inMemoryLogTailLineCount> Lines;
+    std::size_t NextIndex = 0;
+    std::size_t Count = 0;
+};
+
+InMemoryLogTail& LogTail() noexcept {
+    static InMemoryLogTail s_tail;
+    return s_tail;
+}
+
+std::string FormatLogLine(std::wstring_view message) {
+    SYSTEMTIME st{};
+    GetLocalTime(&st);
+    auto line = std::format(L"{:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:03} [T:{}] {}\r\n",
+                            st.wYear,
+                            st.wMonth,
+                            st.wDay,
+                            st.wHour,
+                            st.wMinute,
+                            st.wSecond,
+                            st.wMilliseconds,
+                            GetCurrentThreadId(),
+                            message);
+    return Utf16ToUtf8(line);
+}
+
+void AppendLogBytesDirect(std::string_view bytes) noexcept {
+    try {
+        if (bytes.empty()) return;
+        auto const& path = GetCachedLogPath();
+        if (path.empty()) return;
+
+        wil::unique_hfile file(CreateFileW(path.c_str(),
+                                           FILE_APPEND_DATA,
+                                           FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                           nullptr,
+                                           OPEN_ALWAYS,
+                                           FILE_ATTRIBUTE_NORMAL,
+                                           nullptr));
+        if (!file) return;
+
+        std::size_t offset = 0;
+        while (offset < bytes.size()) {
+            auto remaining = bytes.size() - offset;
+            auto chunk = std::min<std::size_t>(remaining, static_cast<std::size_t>(std::numeric_limits<DWORD>::max()));
+            DWORD written = 0;
+            if (!WriteFile(file.get(), bytes.data() + offset, static_cast<DWORD>(chunk), &written, nullptr) ||
+                written == 0) {
+                return;
+            }
+            offset += written;
+        }
+        // Best-effort flush so crash tails survive immediate termination.
+        (void)FlushFileBuffers(file.get());
+    } catch (...) {
+    }
+}
 
 /*------------------------------------------------------------------------------------------------------------*/
-/*//////// Environment Helpers ///////////////////////////////////////////////////////////////////////////////*/
+/*//////// Environment Helpers //////////////////////////////////////////////////////////////////////////////*/
 /*------------------------------------------------------------------------------------------------------------*/
 
 std::wstring GetEnvironmentVariableValue(wchar_t const* name) {
@@ -163,6 +253,7 @@ struct Logger::Impl {
             Queue.swap(empty);
         } catch (...) {
         }
+        Cv.notify_one();
     }
 
     void Run() noexcept {
@@ -205,7 +296,7 @@ struct Logger::Impl {
             while (!batch.empty()) {
                 if (!file) tryOpen();
                 if (bytesWritten >= c_maxLogBytes) rotate();
-                if (!file) return;
+                if (!file) break;
 
                 auto const& msg = batch.front();
                 if (msg.size() > static_cast<std::size_t>(std::numeric_limits<DWORD>::max())) {
@@ -262,6 +353,20 @@ struct Logger::Impl {
                 }
             }
             writeBatch(batch);
+            if (!batch.empty() && !shouldExit) {
+                // File temporarily unavailable; prepend leftovers back to the queue.
+                std::lock_guard lock(QueueMutex);
+                std::queue<std::string> newQueue;
+                while (!batch.empty()) {
+                    newQueue.push(std::move(batch.front()));
+                    batch.pop();
+                }
+                while (!Queue.empty()) {
+                    newQueue.push(std::move(Queue.front()));
+                    Queue.pop();
+                }
+                Queue.swap(newQueue);
+            }
             if (shouldExit) break;
         }
     }
@@ -301,19 +406,44 @@ void Logger::Enqueue(std::string message) noexcept {
 
 void WriteLogLine(std::wstring_view message) noexcept {
     try {
+        auto line = details::FormatLogLine(message);
+        details::LogTail().Add(line);
+        Logger::Instance().Enqueue(std::move(line));
+    } catch (...) {
+    }
+}
+
+void FlushInMemoryLogTailToFile(std::wstring_view reason, std::uint32_t exceptionCode) noexcept {
+    try {
+        std::vector<std::string> lines;
+        auto const snapshotAvailable = details::LogTail().TrySnapshot(lines);
+
         SYSTEMTIME st{};
         GetLocalTime(&st);
-        auto line = std::format(L"{:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:03} [T:{}] {}\r\n",
-                                st.wYear,
-                                st.wMonth,
-                                st.wDay,
-                                st.wHour,
-                                st.wMinute,
-                                st.wSecond,
-                                st.wMilliseconds,
-                                GetCurrentThreadId(),
-                                message);
-        Logger::Instance().Enqueue(Utf16ToUtf8(line));
+        auto header = std::format(L"\r\n{:04}-{:02}-{:02} {:02}:{:02}:{:02}.{:03} [T:{}] [Logger] BEGIN "
+                                  L"in-memory diagnostic tail reason={} exception=0x{:08X} lines={}\r\n",
+                                  st.wYear,
+                                  st.wMonth,
+                                  st.wDay,
+                                  st.wHour,
+                                  st.wMinute,
+                                  st.wSecond,
+                                  st.wMilliseconds,
+                                  GetCurrentThreadId(),
+                                  reason,
+                                  exceptionCode,
+                                  snapshotAvailable ? lines.size() : 0);
+
+        std::string output = Utf16ToUtf8(header);
+        if (!snapshotAvailable) {
+            output += "[Logger] In-memory diagnostic tail unavailable because the buffer lock was busy\r\n";
+        } else {
+            for (auto const& line : lines) {
+                output += line;
+            }
+        }
+        output += "[Logger] END in-memory diagnostic tail\r\n\r\n";
+        details::AppendLogBytesDirect(output);
     } catch (...) {
     }
 }
@@ -335,3 +465,15 @@ void DebugTrace(std::wstring_view message) noexcept {
     }
 #endif
 }
+
+#ifdef _DEBUG
+void DebugTraceDiagnostic(std::wstring_view message) noexcept {
+    util::WriteLogLine(message);
+    try {
+        std::wstring output(message);
+        output.push_back(L'\n');
+        OutputDebugStringW(output.c_str());
+    } catch (...) {
+    }
+}
+#endif

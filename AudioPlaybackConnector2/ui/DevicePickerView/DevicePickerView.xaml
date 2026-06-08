@@ -34,6 +34,44 @@
                     <FontIcon FontSize="15" Glyph="&#xE711;" />
                 </Button>
             </Grid>
+            <Grid
+                x:Name="GlobalActionsPanel"
+                Margin="5,0,5,0"
+                Visibility="Collapsed">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="6" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Button
+                    x:Name="DisconnectAllButton"
+                    Grid.Column="0"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Center"
+                    Padding="8,4"
+                    Background="{ThemeResource SystemFillColorCriticalBackgroundBrush}"
+                    BorderThickness="0">
+                    <TextBlock
+                        x:Name="DisconnectAllText"
+                        FontSize="12"
+                        HorizontalAlignment="Center"
+                        Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                </Button>
+                <Button
+                    x:Name="ReconnectAllButton"
+                    Grid.Column="2"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Center"
+                    Padding="8,4"
+                    Background="{ThemeResource AccentFillColorDefaultBrush}"
+                    BorderThickness="0">
+                    <TextBlock
+                        x:Name="ReconnectAllText"
+                        FontSize="12"
+                        HorizontalAlignment="Center"
+                        Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                </Button>
+            </Grid>
             <ProgressRing
                 x:Name="ProgressIndicator"
                 HorizontalAlignment="Center"

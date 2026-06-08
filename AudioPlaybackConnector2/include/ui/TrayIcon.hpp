@@ -5,7 +5,6 @@
 /*------------------------------------------------------------------------------------------------------------*/
 
 enum class TrayIconState { Idle, Connecting, Connected, Error };
-enum class TrayNotificationType { Info, Warning, Error };
 
 /*------------------------------------------------------------------------------------------------------------*/
 /*//////// Tray Icon /////////////////////////////////////////////////////////////////////////////////////////*/
@@ -22,7 +21,6 @@ public:
     void Reregister();
     void SetState(TrayIconState state);
     void SetTooltip(std::wstring_view text);
-    void ShowNotification(std::wstring_view title, std::wstring_view text, TrayNotificationType type);
     void UpdateTheme();
     void ToggleConnectingFrame();
     std::optional<RECT> GetIconRect() const;
