@@ -85,6 +85,7 @@ private:
     winrt::Microsoft::UI::Xaml::Controls::Flyout CreatePickerFlyout();
     static void StripFlyoutPresenterStyle(winrt::Microsoft::UI::Xaml::DependencyObject const& content);
     [[nodiscard]] util::SettingsWindowPlacement CalculateSettingsWindowPlacement() const;
+    [[nodiscard]] bool IsCursorOverTrayIcon() const;
     void OnTrayIconDoubleClick();
 
     /*------------------------------------------------------------------------------------------------------------*/
@@ -114,6 +115,8 @@ private:
     ULONGLONG m_lastLeftClickTick = 0;
     ULONGLONG m_lastRightClickTick = 0;
     ULONGLONG m_lastLeftDoubleClickTick = 0;
+    ULONGLONG m_lastPickerClosedOverTrayIconTick = 0;
+    bool m_suppressNextTraySelectAfterPickerClosedOverTrayIcon = false;
 
     enum class PickerFlyoutState {
         Closed,

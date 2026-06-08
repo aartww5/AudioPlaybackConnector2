@@ -31,6 +31,8 @@ void TrayController::Initialize(HWND hwnd, winrt::Microsoft::UI::Xaml::Window ma
     m_lastLeftClickTick = 0;
     m_lastRightClickTick = 0;
     m_lastLeftDoubleClickTick = 0;
+    m_lastPickerClosedOverTrayIconTick = 0;
+    m_suppressNextTraySelectAfterPickerClosedOverTrayIcon = false;
 
     m_trayIcon = std::make_unique<TrayIcon>();
     m_trayIcon->Initialize(m_hwnd, m_trayCallbackMsg);
@@ -140,6 +142,8 @@ void TrayController::Teardown() noexcept {
     m_lastLeftClickTick = 0;
     m_lastRightClickTick = 0;
     m_lastLeftDoubleClickTick = 0;
+    m_lastPickerClosedOverTrayIconTick = 0;
+    m_suppressNextTraySelectAfterPickerClosedOverTrayIcon = false;
 }
 
 /*------------------------------------------------------------------------------------------------------------*/
@@ -199,9 +203,26 @@ void TrayController::ShowDevicePicker() {
     if (m_isTearingDown.load()) return;
     DebugTrace(L"[TrayController] OnTrayIconLeftClick()");
 
-    if (m_pickerFlyoutState.load() != PickerFlyoutState::Closed) {
+    auto const flyoutState = m_pickerFlyoutState.load();
+    if (flyoutState == PickerFlyoutState::Open && m_pickerFlyout) {
+        m_pickerFlyoutState.store(PickerFlyoutState::Closing);
+        m_pickerFlyout.Hide();
+        return;
+    }
+
+    if (flyoutState != PickerFlyoutState::Closed) {
         DebugTrace(L"[TrayController] Picker flyout state is not closed, ignoring click");
         return;
+    }
+
+    if (m_suppressNextTraySelectAfterPickerClosedOverTrayIcon) {
+        constexpr ULONGLONG c_trayLightDismissSuppressMs = 2000;
+        auto const elapsedSinceDismiss = GetTickCount64() - m_lastPickerClosedOverTrayIconTick;
+        m_suppressNextTraySelectAfterPickerClosedOverTrayIcon = false;
+        if (elapsedSinceDismiss < c_trayLightDismissSuppressMs) {
+            DebugTrace(L"[TrayController] Picker flyout reopen suppressed after tray light-dismiss");
+            return;
+        }
     }
 
     auto rect = m_trayIcon->GetIconRect();
@@ -577,6 +598,11 @@ Controls::Flyout TrayController::CreatePickerFlyout() {
         auto self = weak.lock();
         if (!self || self->m_isTearingDown.load()) return;
         DebugTrace(L"[TrayController] Picker flyout closed");
+        auto const leftButtonDown = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
+        if (leftButtonDown && self->IsCursorOverTrayIcon()) {
+            self->m_lastPickerClosedOverTrayIconTick = GetTickCount64();
+            self->m_suppressNextTraySelectAfterPickerClosedOverTrayIcon = true;
+        }
         if (self->m_hwnd && IsWindow(self->m_hwnd)) {
             SetWindowPos(self->m_hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         }
@@ -593,6 +619,18 @@ util::SettingsWindowPlacement TrayController::CalculateSettingsWindowPlacement()
     if (!rect) return util::CalculateSettingsWindowPlacement();
 
     return util::CalculateSettingsWindowPlacement(*rect);
+}
+
+bool TrayController::IsCursorOverTrayIcon() const {
+    if (!m_trayIcon) return false;
+
+    POINT cursor{};
+    if (!GetCursorPos(&cursor)) return false;
+
+    auto rect = m_trayIcon->GetIconRect();
+    if (!rect) return false;
+
+    return PtInRect(&*rect, cursor) != FALSE;
 }
 
 void TrayController::OnTrayIconDoubleClick() {
