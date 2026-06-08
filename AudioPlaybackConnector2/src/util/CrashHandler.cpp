@@ -564,8 +564,9 @@ inline LONG WINAPI VectoredHandler(PEXCEPTION_POINTERS exceptionPointers) {
     }
 
     auto const code = exceptionPointers->ExceptionRecord->ExceptionCode;
-    if (code == STATUS_HEAP_CORRUPTION || code == STATUS_STACK_BUFFER_OVERRUN || code == STATUS_ACCESS_VIOLATION ||
-        code == STATUS_ILLEGAL_INSTRUCTION) {
+    // Access violations can be first-chance exceptions owned by injected hooks or UI/runtime internals.
+    // Let normal SEH/UEF handling decide whether they are truly unhandled.
+    if (code == STATUS_HEAP_CORRUPTION || code == STATUS_STACK_BUFFER_OVERRUN || code == STATUS_ILLEGAL_INSTRUCTION) {
         HandleFatalCrash(code, exceptionPointers, L"VectoredException");
     }
     return EXCEPTION_CONTINUE_SEARCH;
