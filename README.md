@@ -42,8 +42,6 @@ Built with **WinUI 3 Desktop**, **C++/WinRT**, and distributed as **MSIX**.
 
 - Windows 10 version 1809 (build 17763) or newer
 - Bluetooth adapter with A2DP support
-- Windows App SDK Runtime 2.0.1 or newer
-- Microsoft Windows App Runtime Singleton
 - MSIX installation (release or local package)
 
 ## Usage

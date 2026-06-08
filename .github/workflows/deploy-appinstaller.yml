@@ -34,16 +34,42 @@ jobs:
       shell: pwsh
       run: ./scripts/release/update-package-version.ps1 -Version '${{ inputs.package_version }}'
 
+    - name: Download release dependencies
+      id: deps
+      shell: pwsh
+      run: |
+        $depsDir = Join-Path $env:RUNNER_TEMP 'dependencies'
+        New-Item -ItemType Directory -Path $depsDir -Force | Out-Null
+        # Download any framework packages published alongside the release
+        gh release download "${{ inputs.tag }}" --repo "${{ github.repository }}" --dir $depsDir --pattern "*.appx" --pattern "*.msix" --clobber
+        # Remove the main app package so it is not treated as a dependency
+        Get-ChildItem -Path $depsDir -File | Where-Object { $_.Name -like "AudioPlaybackConnector2_*.msix" } | Remove-Item
+        if ((Get-ChildItem -Path $depsDir -File).Count -eq 0) {
+          Write-Warning "No dependency assets found in release."
+        }
+        "DIR=$depsDir" >> $env:GITHUB_OUTPUT
+      env:
+        GH_TOKEN: ${{ github.token }}
+
     - name: Generate App Installer feed
       shell: pwsh
       run: |
         $assetName = "AudioPlaybackConnector2_${{ inputs.package_version }}_x64.msix"
         $msixUrl = "https://github.com/${{ github.repository }}/releases/download/${{ inputs.tag }}/$assetName"
+        $depBaseUrl = "https://github.com/${{ github.repository }}/releases/download/${{ inputs.tag }}"
         New-Item -ItemType Directory -Path pages -Force | Out-Null
-        ./scripts/release/generate-appinstaller.ps1 `
-          -MsixUrl $msixUrl `
-          -AppInstallerUrl $env:APPINSTALLER_URL `
-          -OutputPath 'pages/AudioPlaybackConnector2.appinstaller'
+        $params = @{
+          MsixUrl = $msixUrl
+          AppInstallerUrl = $env:APPINSTALLER_URL
+          OutputPath = 'pages/AudioPlaybackConnector2.appinstaller'
+          ProcessorArchitecture = 'x64'
+        }
+        $depsDir = '${{ steps.deps.outputs.DIR }}'
+        if ($depsDir -and (Test-Path $depsDir) -and (Get-ChildItem -Path $depsDir -File).Count -gt 0) {
+          $params['DependenciesDirectory'] = $depsDir
+          $params['DependencyBaseUrl'] = $depBaseUrl
+        }
+        ./scripts/release/generate-appinstaller.ps1 @params
 
     - name: Configure GitHub Pages
       uses: actions/configure-pages@v5

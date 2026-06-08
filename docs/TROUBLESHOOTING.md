@@ -2,17 +2,17 @@
 
 ## `DEP0840` / missing WinAppRuntime packages
 
-If launch or packaging fails with `DEP0840` and mentions missing:
-
-- `MicrosoftCorporationII.WinAppRuntime.Main.2`
-- `MicrosoftCorporationII.WinAppRuntime.Singleton`
-
-Install both runtime dependencies once:
+If you installed via `.appinstaller`, the required framework dependencies (including the Windows App SDK runtime)
+should be installed automatically. If you still see `DEP0840` mentioning missing packages such as
+`MicrosoftCorporationII.WinAppRuntime.Main.2` or `MicrosoftCorporationII.WinAppRuntime.Singleton`, install them manually:
 
 1. [WinAppRuntime.Singleton](https://apps.microsoft.com/detail/9p5z076k079h)
 2. [Windows App SDK 2.0 runtime](https://learn.microsoft.com/en-us/windows/apps/windows-app-sdk/downloads#windows-app-sdk-20)
 
 Then retry install/launch.
+
+> This usually only happens when installing the raw `.msix` directly without the `.appinstaller` flow, or when the
+> framework packages were removed from the system after the app was installed.
 
 ## App Installer protocol is disabled
 

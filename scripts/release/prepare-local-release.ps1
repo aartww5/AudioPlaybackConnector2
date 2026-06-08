@@ -36,14 +36,31 @@ try {
     $msix = & (Join-Path $repoRoot "scripts/release/locate-msix.ps1") `
         -Version $Version `
         -OutputDirectory $distRoot `
-        -Architecture $Architecture
+        -Architecture $Architecture `
+        -Configuration $Configuration
+
+    # Copy dependencies into the dist folder so local .appinstaller can resolve them
+    $depsTargetDir = Join-Path $distRoot "Dependencies/$Architecture"
+    if ($msix.DependenciesDirectory -and (Test-Path $msix.DependenciesDirectory)) {
+        New-Item -ItemType Directory -Path $depsTargetDir -Force | Out-Null
+        Get-ChildItem -Path $msix.DependenciesDirectory -Recurse -Include @("*.appx", "*.msix") | ForEach-Object {
+            Copy-Item -LiteralPath $_.FullName -Destination $depsTargetDir -Force
+        }
+    }
 
     $msixUrl = "https://github.com/N0ahTM/AudioPlaybackConnector2/releases/download/v$SemVer/$($msix.Name)"
     $appInstallerPath = Join-Path $distRoot "AudioPlaybackConnector2.appinstaller"
-    & (Join-Path $repoRoot "scripts/release/generate-appinstaller.ps1") `
-        -MsixUrl $msixUrl `
-        -AppInstallerUrl "https://n0ahtm.github.io/AudioPlaybackConnector2/AudioPlaybackConnector2.appinstaller" `
-        -OutputPath $appInstallerPath | Out-Host
+    $params = @{
+        MsixUrl = $msixUrl
+        AppInstallerUrl = "https://n0ahtm.github.io/AudioPlaybackConnector2/AudioPlaybackConnector2.appinstaller"
+        OutputPath = $appInstallerPath
+        ProcessorArchitecture = $Architecture
+    }
+    if (Test-Path $depsTargetDir) {
+        $params['DependenciesDirectory'] = $depsTargetDir
+        $params['DependencyBaseUrl'] = "Dependencies/$Architecture"
+    }
+    & (Join-Path $repoRoot "scripts/release/generate-appinstaller.ps1") @params | Out-Host
 
     $exeCandidates = @(
         (Join-Path $repoRoot "$Architecture/$Configuration/AudioPlaybackConnector2/AudioPlaybackConnector2.exe")

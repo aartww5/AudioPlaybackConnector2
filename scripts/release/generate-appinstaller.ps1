@@ -8,10 +8,15 @@ param(
     [string]$ManifestPath = "AudioPlaybackConnector2 (Package)/Package.appxmanifest",
     [string]$PackageProjectPath = "AudioPlaybackConnector2 (Package)/AudioPlaybackConnector2 (Package).wapproj",
     [string]$OutputPath = (Join-Path ([System.IO.Path]::GetTempPath()) "AudioPlaybackConnector2.appinstaller"),
-    [string]$ProcessorArchitecture = "x64"
+    [string]$ProcessorArchitecture = "x64",
+
+    [string]$DependenciesDirectory = "",
+    [string]$DependencyBaseUrl = ""
 )
 
 $ErrorActionPreference = "Stop"
+
+Add-Type -AssemblyName System.IO.Compression.FileSystem
 
 function Get-HoursBetweenUpdateChecks {
     param([string]$Path)
@@ -30,6 +35,34 @@ function Get-HoursBetweenUpdateChecks {
     }
 
     return "24"
+}
+
+function Get-PackageMetadata {
+    param([string]$PackagePath)
+
+    $zip = [System.IO.Compression.ZipFile]::OpenRead($PackagePath)
+    try {
+        $entry = $zip.GetEntry("AppxManifest.xml")
+        if (-not $entry) {
+            throw "No AppxManifest.xml found in $PackagePath"
+        }
+        $stream = $entry.Open()
+        $reader = [System.IO.StreamReader]::new($stream)
+        $xmlText = $reader.ReadToEnd()
+        $reader.Close()
+        $stream.Close()
+
+        [xml]$manifest = $xmlText
+        $identity = $manifest.Package.Identity
+        return [pscustomobject]@{
+            Name                  = $identity.Name
+            Publisher             = $identity.Publisher
+            Version               = $identity.Version
+            ProcessorArchitecture = $identity.ProcessorArchitecture
+        }
+    } finally {
+        $zip.Dispose()
+    }
 }
 
 [xml]$manifest = [System.IO.File]::ReadAllText($ManifestPath)
@@ -61,6 +94,29 @@ try {
     $writer.WriteAttributeString("Uri", $MsixUrl)
     $writer.WriteEndElement()
 
+    if (-not [string]::IsNullOrWhiteSpace($DependenciesDirectory) -and (Test-Path $DependenciesDirectory)) {
+        $deps = Get-ChildItem -Path $DependenciesDirectory -Recurse -Include @("*.appx", "*.msix")
+        if ($deps) {
+            $writer.WriteStartElement("Dependencies", $appInstallerNs)
+            foreach ($dep in $deps) {
+                $meta = Get-PackageMetadata -PackagePath $dep.FullName
+                $depUrl = if (-not [string]::IsNullOrWhiteSpace($DependencyBaseUrl)) {
+                    "$($DependencyBaseUrl.TrimEnd('/'))/$($dep.Name)"
+                } else {
+                    $dep.Name
+                }
+                $writer.WriteStartElement("Package", $appInstallerNs)
+                $writer.WriteAttributeString("Name", $meta.Name)
+                $writer.WriteAttributeString("Publisher", $meta.Publisher)
+                $writer.WriteAttributeString("ProcessorArchitecture", $meta.ProcessorArchitecture)
+                $writer.WriteAttributeString("Uri", $depUrl)
+                $writer.WriteAttributeString("Version", $meta.Version)
+                $writer.WriteEndElement()
+            }
+            $writer.WriteEndElement()
+        }
+    }
+
     $writer.WriteStartElement("UpdateSettings", $appInstallerNs)
     $writer.WriteStartElement("OnLaunch", $appInstallerNs)
     $writer.WriteAttributeString("HoursBetweenUpdateChecks", $hoursBetweenUpdateChecks)
@@ -78,12 +134,12 @@ if ($env:GITHUB_OUTPUT) {
 }
 
 [pscustomobject]@{
-    Path = $OutputPath
-    Version = $identity.Version
-    PackageVersion = $identity.Version
-    Name = $identity.Name
-    Publisher = $identity.Publisher
+    Path                     = $OutputPath
+    Version                  = $identity.Version
+    PackageVersion           = $identity.Version
+    Name                     = $identity.Name
+    Publisher                = $identity.Publisher
     HoursBetweenUpdateChecks = $hoursBetweenUpdateChecks
-    MsixUrl = $MsixUrl
-    AppInstallerUrl = $AppInstallerUrl
+    MsixUrl                  = $MsixUrl
+    AppInstallerUrl          = $AppInstallerUrl
 }

@@ -6,8 +6,8 @@
 - Desktop development with C++ workload
 - Windows application development workload (WinUI / Windows App SDK)
 - Windows SDK 10.0.26100.0 or newer
-- Windows App SDK Runtime 2.0.1 or newer
-- Microsoft Windows App Runtime Singleton
+- Windows App SDK Runtime 2.0.1 or newer (Visual Studio usually installs this with the Windows application development workload; install manually only if `DEP0840` occurs during packaging launch)
+- Microsoft Windows App Runtime Singleton (only needed if Visual Studio reports missing framework packages)
 
 ## Open the solution
 

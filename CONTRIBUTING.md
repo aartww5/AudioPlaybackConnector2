@@ -8,9 +8,9 @@ Thank you for your interest in contributing to AudioPlaybackConnector2.
   - **Desktop development with C++**
   - **Windows application development** (for WinUI 3 / Windows App SDK)
 - Windows SDK 10.0.26100.0 or later
-- [WinAppRuntime.Singleton](https://apps.microsoft.com/detail/9p5z076k079h)
-- [Windows App SDK 2.0 runtime](https://learn.microsoft.com/en-us/windows/apps/windows-app-sdk/downloads#windows-app-sdk-20)
 - Windows 11 (or Windows 10 1803+ for testing)
+
+> **Developer runtime note:** If Visual Studio reports missing `MicrosoftCorporationII.WinAppRuntime.Main.2` or `MicrosoftCorporationII.WinAppRuntime.Singleton` packages during launch, install the [Windows App SDK 2.0 runtime](https://learn.microsoft.com/en-us/windows/apps/windows-app-sdk/downloads#windows-app-sdk-20) and [WinAppRuntime.Singleton](https://apps.microsoft.com/detail/9p5z076k079h) on your development machine. End users do not need to do this manually when installing through the release `.appinstaller`.
 
 ## Building
 
@@ -25,7 +25,7 @@ Thank you for your interest in contributing to AudioPlaybackConnector2.
 
 ### Missing Windows App SDK runtime packages
 
-If Visual Studio fails to launch the packaging project with `DEP0840` and mentions missing `MicrosoftCorporationII.WinAppRuntime.Main.2` or `MicrosoftCorporationII.WinAppRuntime.Singleton` packages, install the runtime dependencies listed above, then launch the project again.
+If Visual Studio fails to launch the packaging project with `DEP0840` and mentions missing `MicrosoftCorporationII.WinAppRuntime.Main.2` or `MicrosoftCorporationII.WinAppRuntime.Singleton` packages, install the [Windows App SDK 2.0 runtime](https://learn.microsoft.com/en-us/windows/apps/windows-app-sdk/downloads#windows-app-sdk-20) and [WinAppRuntime.Singleton](https://apps.microsoft.com/detail/9p5z076k079h) on your development machine, then launch the project again.
 
 ### Visual Studio 2026
 

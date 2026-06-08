@@ -82,18 +82,78 @@ jobs:
     - name: Locate MSIX
       id: msix
       shell: pwsh
-      run: ./scripts/release/locate-msix.ps1 -Version '${{ steps.version.outputs.VERSION }}'
+      run: ./scripts/release/locate-msix.ps1 -Version '${{ steps.version.outputs.VERSION }}' -Configuration Release -Architecture x64
+
+    - name: Collect dependencies
+      id: deps
+      shell: pwsh
+      run: |
+        $depsDir = '${{ steps.msix.outputs.DEPS_DIR }}'
+        if (-not $depsDir -or -not (Test-Path $depsDir)) {
+          Write-Host "No dependencies directory found."
+          exit 0
+        }
+        $staging = Join-Path $env:RUNNER_TEMP 'dependencies'
+        New-Item -ItemType Directory -Path $staging -Force | Out-Null
+        $files = Get-ChildItem -Path $depsDir -Recurse -Include @("*.appx", "*.msix")
+        foreach ($f in $files) {
+          Copy-Item -LiteralPath $f.FullName -Destination $staging -Force
+        }
+        "DIR=$staging" >> $env:GITHUB_OUTPUT
+        Get-ChildItem -Path $staging | ForEach-Object { Write-Host "Dependency: $($_.Name)" }
+
+    - name: Extract changelog
+      id: changelog
+      shell: pwsh
+      run: ./scripts/release/extract-changelog.ps1 -Version '${{ steps.version.outputs.TAG }}'
 
     - name: Generate App Installer feed
       id: appinstaller
       shell: pwsh
       run: |
         $msixUrl = "https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.TAG }}/${{ steps.msix.outputs.NAME }}"
+        $depBaseUrl = "https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.TAG }}"
         $outputPath = Join-Path $env:RUNNER_TEMP 'AudioPlaybackConnector2.appinstaller'
-        ./scripts/release/generate-appinstaller.ps1 `
-          -MsixUrl $msixUrl `
-          -AppInstallerUrl $env:APPINSTALLER_URL `
-          -OutputPath $outputPath
+        $depsDir = '${{ steps.deps.outputs.DIR }}'
+        $params = @{
+          MsixUrl = $msixUrl
+          AppInstallerUrl = $env:APPINSTALLER_URL
+          OutputPath = $outputPath
+          ProcessorArchitecture = 'x64'
+        }
+        if ($depsDir -and (Test-Path $depsDir)) {
+          $params['DependenciesDirectory'] = $depsDir
+          $params['DependencyBaseUrl'] = $depBaseUrl
+        }
+        ./scripts/release/generate-appinstaller.ps1 @params
+        "PATH=$outputPath" >> $env:GITHUB_OUTPUT
+
+    - name: Build release body
+      id: body
+      shell: pwsh
+      run: |
+        $changelog = @'
+        ${{ steps.changelog.outputs.BODY }}
+        '@
+        $footer = @'
+
+        ---
+
+        **Installation:** Download the `.cer` once and install through the `.appinstaller` file.
+
+        ```powershell
+        Import-Certificate -FilePath ".\AudioPlaybackConnector2.cer" -CertStoreLocation "Cert:\LocalMachine\Root"
+        Start-Process "ms-appinstaller:?source=${{ env.APPINSTALLER_URL }}"
+        ```
+
+        If Windows does not open App Installer from the protocol link, download and open the `.appinstaller` asset directly. Direct MSIX sideloading remains available, but installing through the `.appinstaller` file enables Windows App Installer update checks.
+
+        > Releases are signed with a self-signed certificate. A free open-source code-signing certificate has been requested but approval may take some time.
+        '@
+        $fullBody = ($changelog.Trim() + "`n" + $footer).Trim()
+        $bodyPath = Join-Path $env:RUNNER_TEMP 'release-body.md'
+        [System.IO.File]::WriteAllText($bodyPath, $fullBody)
+        "PATH=$bodyPath" >> $env:GITHUB_OUTPUT
 
     - name: Create draft GitHub Release
       uses: softprops/action-gh-release@v2
@@ -102,36 +162,23 @@ jobs:
         name: v${{ steps.version.outputs.SEMVER }}
         draft: true
         overwrite_files: true
-        body: |
-          See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for what's new.
-
-          **Runtime dependencies:** Install these once before launching the MSIX package:
-
-          1. [WinAppRuntime.Singleton](https://apps.microsoft.com/detail/9p5z076k079h)
-          2. [Windows App SDK 2.0 runtime](https://learn.microsoft.com/en-us/windows/apps/windows-app-sdk/downloads#windows-app-sdk-20)
-
-          If launch fails with `DEP0840` and mentions `MicrosoftCorporationII.WinAppRuntime.Main.2` or `MicrosoftCorporationII.WinAppRuntime.Singleton`, reinstall the runtime dependencies above.
-
-          **Installation:** Download the `.cer` once and install through the `.appinstaller` file.
-
-          1. Install the runtime dependencies listed above.
-          2. Install the certificate once:
-             ```powershell
-             Import-Certificate -FilePath ".\AudioPlaybackConnector2.cer" -CertStoreLocation "Cert:\LocalMachine\Root"
-             ```
-          3. Install or update through App Installer:
-             ```powershell
-             Start-Process "ms-appinstaller:?source=${{ env.APPINSTALLER_URL }}"
-             ```
-
-          If Windows does not open App Installer from the protocol link, download and open the `.appinstaller` asset directly. Direct MSIX sideloading remains available, but installing through the `.appinstaller` file enables Windows App Installer update checks.
-
-          > Releases are signed with a self-signed certificate. A free open-source code-signing certificate has been requested but approval may take some time.
+        body_path: ${{ steps.body.outputs.PATH }}
         files: |
           ${{ steps.msix.outputs.PATH }}
           ${{ steps.appinstaller.outputs.PATH }}
           certs/AudioPlaybackConnector2.cer
         fail_on_unmatched_files: true
+
+    - name: Upload dependency assets
+      if: steps.deps.outputs.DIR != ''
+      shell: pwsh
+      run: |
+        $deps = Get-ChildItem -Path '${{ steps.deps.outputs.DIR }}' -File
+        foreach ($dep in $deps) {
+          gh release upload "${{ steps.version.outputs.TAG }}" $dep.FullName --repo "${{ github.repository }}" --clobber
+        }
+      env:
+        GH_TOKEN: ${{ github.token }}
 
     - name: Stage App Installer feed for GitHub Pages
       shell: pwsh

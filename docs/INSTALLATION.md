@@ -15,12 +15,7 @@ Each GitHub release provides:
 - `.msix`
 - `.cer` certificate
 
-### 1) Install runtime dependencies (once)
-
-1. Install [WinAppRuntime.Singleton](https://apps.microsoft.com/detail/9p5z076k079h).
-2. Install the [Windows App SDK 2.0 runtime](https://learn.microsoft.com/en-us/windows/apps/windows-app-sdk/downloads#windows-app-sdk-20).
-
-### 2) Trust the release certificate
+### 1) Trust the release certificate
 
 Right-click the `.cer` file and choose **Install Certificate**, or use PowerShell:
 
@@ -34,7 +29,7 @@ If you only want per-user trust, use:
 Import-Certificate -FilePath ".\AudioPlaybackConnector2.cer" -CertStoreLocation "Cert:\CurrentUser\TrustedPeople"
 ```
 
-### 3) Install via App Installer
+### 2) Install via App Installer
 
 Download the App Installer feed and open the local `.appinstaller` file:
 
@@ -48,6 +43,9 @@ Opening a downloaded `.appinstaller` avoids the `ms-appinstaller:` web protocol,
 default on consumer devices since December 2023. The protocol can be re-enabled by enterprise policy, but the local
 `.appinstaller` flow is the supported path for general GitHub release distribution.
 
+The `.appinstaller` automatically pulls in required framework dependencies (VCLibs and Windows App SDK runtime).
+Because these are system framework packages, Windows may prompt for administrator approval during installation.
+
 See:
 
 - [Installing Windows apps from a web page](https://learn.microsoft.com/windows/msix/app-installer/installing-windows10-apps-web)
@@ -56,6 +54,7 @@ See:
 ### Optional fallback: direct MSIX install
 
 `Add-AppxPackage` works as a fallback, but it does not preserve update-feed behavior from `.appinstaller`.
+If you install the `.msix` directly, any missing framework dependencies will be reported and must be resolved manually.
 
 ## Build and run locally
 
