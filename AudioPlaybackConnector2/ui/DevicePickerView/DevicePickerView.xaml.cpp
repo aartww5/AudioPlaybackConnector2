@@ -15,10 +15,10 @@ using namespace winrt::Microsoft::UI::Xaml::Controls;
 
 namespace {
 constexpr auto c_pendingActionFallbackTimeout = std::chrono::seconds(2);
-constexpr double c_pickerMinWidth = 320.0;
+constexpr double c_pickerMinWidth = 260.0;
 constexpr double c_pickerMaxWidth = 520.0;
-constexpr double c_pickerHorizontalChromeWidth = 74.0;
-constexpr double c_connectedActionsWidth = 74.0;
+constexpr double c_pickerHorizontalChromeWidth = 64.0;
+constexpr double c_connectedActionsWidth = 68.0;
 constexpr double c_globalActionsChromeWidth = 82.0;
 
 void CancelRefreshDevicesOperation(winrt::Windows::Foundation::IAsyncOperation<
