@@ -3,6 +3,7 @@
 #include <app/ApplicationHost.hpp>
 
 #include <MainWindow/MainWindow.xaml.h>
+#include <app/AutoReconnectPlanner.hpp>
 #include <app/StartupUpdateCoordinator.hpp>
 #include <core/DeviceManager.hpp>
 #include <core/Settings.hpp>
@@ -189,14 +190,7 @@ void ApplicationHost::OnMainWindowLoaded(Controls::Grid const& root) {
     bool willAutoReconnect = false;
     {
         auto locked = m_settings->LockSharedData();
-        bool globalAutoReconnect = locked->GlobalAutoReconnect;
-        for (const auto& id : locked->LastConnectedIds) {
-            auto it = std::ranges::find_if(locked->Devices, [&](const auto& d) { return d.Id == id; });
-            if (it != locked->Devices.end() && (globalAutoReconnect || it->AutoReconnect)) {
-                willAutoReconnect = true;
-                break;
-            }
-        }
+        willAutoReconnect = AutoReconnectPlanner::HasReconnectTargets(*locked);
     }
 
     if (m_notificationService && !willAutoReconnect) {
@@ -344,22 +338,15 @@ void ApplicationHost::TryAutoReconnect() {
     if (m_exiting.load() || !m_settings || !m_deviceManager) return;
 
     DebugTrace(L"[App] TryAutoReconnect()");
-    bool globalAutoReconnect = false;
-    std::vector<std::wstring> lastConnectedIds;
-    std::vector<DeviceSettings> devices;
+    std::vector<std::wstring> reconnectIds;
     {
         auto locked = m_settings->LockSharedData();
-        globalAutoReconnect = locked->GlobalAutoReconnect;
-        lastConnectedIds = locked->LastConnectedIds;
-        devices = locked->Devices;
+        reconnectIds = AutoReconnectPlanner::BuildReconnectPlan(*locked);
     }
 
-    for (const auto& id : lastConnectedIds) {
-        auto device = std::ranges::find_if(devices, [&](const auto& knownDevice) { return knownDevice.Id == id; });
-        if (device != devices.end() && (globalAutoReconnect || device->AutoReconnect)) {
-            DebugTrace(L"[App] Auto-reconnecting to: {0}", id);
-            m_deviceManager->ConnectDetached(winrt::hstring(id));
-        }
+    for (const auto& id : reconnectIds) {
+        DebugTrace(L"[App] Auto-reconnecting to: {0}", id);
+        m_deviceManager->ConnectDetached(winrt::hstring(id));
     }
 }
 
