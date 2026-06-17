@@ -20,6 +20,18 @@ static Gdiplus::Color GetSystemBrushColor(const wchar_t* resourceKey) {
     }
 }
 
+static Gdiplus::Color BlendColor(Gdiplus::Color from, Gdiplus::Color to, float amount) {
+    amount = std::clamp(amount, 0.0f, 1.0f);
+    auto lerp = [amount](BYTE a, BYTE b) {
+        const auto value = static_cast<float>(a) + (static_cast<float>(b) - a) * amount;
+        return static_cast<BYTE>(std::clamp(static_cast<int>(value + 0.5f), 0, 255));
+    };
+    return Gdiplus::Color(lerp(from.GetA(), to.GetA()),
+                          lerp(from.GetR(), to.GetR()),
+                          lerp(from.GetG(), to.GetG()),
+                          lerp(from.GetB(), to.GetB()));
+}
+
 static HICON CreateHIconFromBitmap(Gdiplus::Bitmap& bitmap) {
     int w = bitmap.GetWidth();
     int h = bitmap.GetHeight();
@@ -158,6 +170,9 @@ void TrayIcon::Initialize(HWND hwnd, UINT callbackMessage) {
 void TrayIcon::SetState(TrayIconState state) {
     {
         auto guard = m_lock.lock_exclusive();
+        if (m_state != state && state == TrayIconState::Connecting) {
+            m_connectingFrame = 0;
+        }
         m_state = state;
     }
     RefreshIcon();
@@ -178,11 +193,11 @@ void TrayIcon::UpdateTheme() {
     RefreshIcon();
 }
 
-void TrayIcon::ToggleConnectingFrame() {
+void TrayIcon::AdvanceConnectingFrame() {
     {
         auto guard = m_lock.lock_exclusive();
         if (m_state != TrayIconState::Connecting) return;
-        m_connectingFrame = !m_connectingFrame;
+        m_connectingFrame = static_cast<uint8_t>((m_connectingFrame + 1) % CONNECTING_FRAME_COUNT);
     }
     RefreshIcon();
 }
@@ -237,8 +252,8 @@ void TrayIcon::CreateAllIcons() {
     decltype(m_hIdle) idle{};
     decltype(m_hConnected) connected{};
     decltype(m_hError) error{};
-    decltype(m_hConnecting1) connecting1{};
-    decltype(m_hConnecting2) connecting2{};
+    decltype(m_hConnecting) connecting{};
+    constexpr std::array<float, CONNECTING_FRAME_COUNT> connectingPulse{0.25f, 0.55f, 0.85f, 1.0f, 0.55f};
 
     for (int i = 0; i < SIZE_COUNT; ++i) {
         int size = SIZES[i];
@@ -246,14 +261,17 @@ void TrayIcon::CreateAllIcons() {
             idle[i] = CreateIconFromImage(*baseImage, size, base);
             connected[i] = CreateIconFromImage(*baseImage, size, success);
             error[i] = CreateIconFromImage(*baseImage, size, critical);
-            connecting1[i] = CreateIconFromImage(*baseImage, size, caution);
-            connecting2[i] = CreateIconFromImage(*baseImage, size, cautionBackground);
+            for (int frame = 0; frame < CONNECTING_FRAME_COUNT; ++frame) {
+                connecting[frame][i] = CreateIconFromImage(
+                    *baseImage, size, BlendColor(cautionBackground, caution, connectingPulse[frame]));
+            }
         } catch (...) {
             idle[i].reset();
             connected[i].reset();
             error[i].reset();
-            connecting1[i].reset();
-            connecting2[i].reset();
+            for (int frame = 0; frame < CONNECTING_FRAME_COUNT; ++frame) {
+                connecting[frame][i].reset();
+            }
         }
     }
 
@@ -262,8 +280,9 @@ void TrayIcon::CreateAllIcons() {
         m_hIdle[i] = std::move(idle[i]);
         m_hConnected[i] = std::move(connected[i]);
         m_hError[i] = std::move(error[i]);
-        m_hConnecting1[i] = std::move(connecting1[i]);
-        m_hConnecting2[i] = std::move(connecting2[i]);
+        for (int frame = 0; frame < CONNECTING_FRAME_COUNT; ++frame) {
+            m_hConnecting[frame][i] = std::move(connecting[frame][i]);
+        }
     }
 }
 
@@ -282,7 +301,7 @@ int TrayIcon::GetBestIconSizeIndex() {
 void TrayIcon::RefreshIcon() {
     int sizeIdx = GetBestIconSizeIndex();
     TrayIconState state;
-    bool connectingFrame;
+    uint8_t connectingFrame;
     auto guard = m_lock.lock_exclusive();
     if (!m_initialized) return;
     state = m_state;
@@ -293,7 +312,7 @@ void TrayIcon::RefreshIcon() {
         case TrayIconState::Connected: hIcon = m_hConnected[sizeIdx].get(); break;
         case TrayIconState::Error: hIcon = m_hError[sizeIdx].get(); break;
         case TrayIconState::Connecting:
-            hIcon = connectingFrame ? m_hConnecting2[sizeIdx].get() : m_hConnecting1[sizeIdx].get();
+            hIcon = m_hConnecting[connectingFrame % CONNECTING_FRAME_COUNT][sizeIdx].get();
             break;
     }
     m_nid.hIcon = hIcon;

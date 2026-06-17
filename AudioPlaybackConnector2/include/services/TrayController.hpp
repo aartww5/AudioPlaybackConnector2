@@ -67,7 +67,7 @@ public:
     void UpdateTooltipFromConnections();
     void RefreshDevicePickerState();
     void OnThemeChanged();
-    void ToggleConnectingFrame();
+    void AdvanceConnectingFrame();
     void Reregister();
     void SetState(TrayIconState state);
     [[nodiscard]] util::SettingsWindowPlacement GetSettingsWindowPlacement() const;

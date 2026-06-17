@@ -33,6 +33,29 @@ void CancelRefreshDevicesOperation(winrt::Windows::Foundation::IAsyncOperation<
         DebugTrace(L"[DevicePickerView] ERROR: {0} failed to cancel RefreshDevicesAsync: unknown exception", context);
     }
 }
+
+Button CreateDeviceActionButton(std::wstring_view glyph,
+                                winrt::hstring const& label,
+                                winrt::Microsoft::UI::Xaml::Media::Brush const& foreground) {
+    auto button = Button();
+    button.Width(30);
+    button.Height(28);
+    button.Padding({0});
+    button.Background(Media::SolidColorBrush(winrt::Windows::UI::Colors::Transparent()));
+    button.BorderThickness({0});
+    button.VerticalAlignment(VerticalAlignment::Center);
+    ToolTipService::SetToolTip(button, box_value(label));
+    winrt::Microsoft::UI::Xaml::Automation::AutomationProperties::SetName(button, label);
+
+    auto icon = FontIcon();
+    icon.Glyph(winrt::hstring(std::wstring(glyph)));
+    icon.FontSize(14);
+    if (foreground) {
+        icon.Foreground(foreground);
+    }
+    button.Content(icon);
+    return button;
+}
 } // namespace
 
 namespace winrt::AudioPlaybackConnector2::implementation {
@@ -89,8 +112,14 @@ void DevicePickerView::Initialize(std::shared_ptr<DeviceManager> manager,
     auto closeText = winrt::hstring(_("Close"));
     ToolTipService::SetToolTip(CloseButton(), box_value(closeText));
     winrt::Microsoft::UI::Xaml::Automation::AutomationProperties::SetName(CloseButton(), closeText);
-    DisconnectAllText().Text(winrt::hstring(_("DisconnectAll")));
-    ReconnectAllText().Text(winrt::hstring(_("ReconnectAll")));
+    auto disconnectAllText = winrt::hstring(_("DisconnectAll"));
+    auto reconnectAllText = winrt::hstring(_("ReconnectAll"));
+    DisconnectAllText().Text(disconnectAllText);
+    ReconnectAllText().Text(reconnectAllText);
+    ToolTipService::SetToolTip(DisconnectAllButton(), box_value(disconnectAllText));
+    ToolTipService::SetToolTip(ReconnectAllButton(), box_value(reconnectAllText));
+    winrt::Microsoft::UI::Xaml::Automation::AutomationProperties::SetName(DisconnectAllButton(), disconnectAllText);
+    winrt::Microsoft::UI::Xaml::Automation::AutomationProperties::SetName(ReconnectAllButton(), reconnectAllText);
 }
 
 void DevicePickerView::LoadDevices() {
@@ -349,38 +378,22 @@ ListViewItem DevicePickerView::BuildDeviceListItem(DevicePickerItemViewModel con
         auto onReconnect = m_onDeviceReconnect;
         auto onDisconnect = m_onDeviceDisconnect;
 
-        auto reconnectBtn = Button();
-        reconnectBtn.Background(Media::SolidColorBrush(winrt::Windows::UI::Colors::Transparent()));
-        reconnectBtn.BorderThickness({0});
-        reconnectBtn.Padding({5, 1, 5, 1});
-        reconnectBtn.VerticalAlignment(VerticalAlignment::Center);
-        reconnectBtn.IsEnabled(!device.IsBusy);
-
-        auto reconnectText = TextBlock();
-        reconnectText.Text(winrt::hstring(_("Reconnect")));
-        reconnectText.FontSize(11);
+        winrt::Microsoft::UI::Xaml::Media::Brush reconnectBrush{nullptr};
         if (auto brush = Application::Current().Resources().TryLookup(box_value(L"AccentFillColorDefaultBrush"))) {
-            reconnectText.Foreground(brush.as<Media::Brush>());
+            reconnectBrush = brush.as<Media::Brush>();
         }
-        reconnectBtn.Content(reconnectText);
+        auto reconnectBtn = CreateDeviceActionButton(L"\xE72C", winrt::hstring(_("Reconnect")), reconnectBrush);
+        reconnectBtn.IsEnabled(!device.IsBusy);
         reconnectBtn.Click([onReconnect, devId](auto const&, auto const&) {
             if (onReconnect) onReconnect(devId);
         });
 
-        auto disconnectBtn = Button();
-        disconnectBtn.Background(Media::SolidColorBrush(winrt::Windows::UI::Colors::Transparent()));
-        disconnectBtn.BorderThickness({0});
-        disconnectBtn.Padding({5, 1, 5, 1});
-        disconnectBtn.VerticalAlignment(VerticalAlignment::Center);
-        disconnectBtn.IsEnabled(!device.IsBusy);
-
-        auto disconnectText = TextBlock();
-        disconnectText.Text(winrt::hstring(_("Disconnect")));
-        disconnectText.FontSize(11);
+        winrt::Microsoft::UI::Xaml::Media::Brush disconnectBrush{nullptr};
         if (auto brush = Application::Current().Resources().TryLookup(box_value(L"SystemFillColorCriticalBrush"))) {
-            disconnectText.Foreground(brush.as<Media::Brush>());
+            disconnectBrush = brush.as<Media::Brush>();
         }
-        disconnectBtn.Content(disconnectText);
+        auto disconnectBtn = CreateDeviceActionButton(L"\xE711", winrt::hstring(_("Disconnect")), disconnectBrush);
+        disconnectBtn.IsEnabled(!device.IsBusy);
         disconnectBtn.Click([onDisconnect, devId](auto const&, auto const&) {
             if (onDisconnect) onDisconnect(devId);
         });

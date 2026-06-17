@@ -364,9 +364,9 @@ void TrayController::OnThemeChanged() {
     }
 }
 
-void TrayController::ToggleConnectingFrame() {
+void TrayController::AdvanceConnectingFrame() {
     if (m_trayIcon) {
-        m_trayIcon->ToggleConnectingFrame();
+        m_trayIcon->AdvanceConnectingFrame();
     }
 }
 

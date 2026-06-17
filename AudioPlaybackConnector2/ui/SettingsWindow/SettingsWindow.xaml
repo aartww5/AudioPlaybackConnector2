@@ -212,8 +212,14 @@
                                     Visibility="Collapsed" />
                                 <Button
                                     x:Name="CheckForUpdatesButton"
-                                    Click="CheckForUpdatesButton_Click"
-                                    Content="Check" />
+                                    Click="CheckForUpdatesButton_Click">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <FontIcon FontSize="14" Glyph="&#xE721;" />
+                                        <TextBlock
+                                            x:Name="CheckForUpdatesButtonText"
+                                            Text="Check" />
+                                    </StackPanel>
+                                </Button>
                             </StackPanel>
                         </Grid>
 
@@ -234,8 +240,14 @@
                                 x:Name="ResetWindowPlacementButton"
                                 Grid.Column="1"
                                 VerticalAlignment="Center"
-                                Click="ResetWindowPlacementButton_Click"
-                                Content="Reset" />
+                                Click="ResetWindowPlacementButton_Click">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <FontIcon FontSize="14" Glyph="&#xE72C;" />
+                                    <TextBlock
+                                        x:Name="ResetWindowPlacementButtonText"
+                                        Text="Reset" />
+                                </StackPanel>
+                            </Button>
                         </Grid>
 
                         <InfoBar
@@ -247,8 +259,16 @@
                                 <Button
                                     x:Name="OpenAppInstallerButton"
                                     Click="OpenAppInstallerButton_Click"
-                                    Content="Open installer"
-                                    Visibility="Collapsed" />
+                                    Visibility="Collapsed">
+                                    <Button.Content>
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <FontIcon FontSize="14" Glyph="&#xE8A7;" />
+                                            <TextBlock
+                                                x:Name="OpenAppInstallerButtonText"
+                                                Text="Open installer" />
+                                        </StackPanel>
+                                    </Button.Content>
+                                </Button>
                             </InfoBar.ActionButton>
                         </InfoBar>
                     </StackPanel>

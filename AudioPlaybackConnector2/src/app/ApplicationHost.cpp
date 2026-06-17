@@ -452,7 +452,7 @@ void ApplicationHost::RefreshTrayVisualState(bool forceErrorWhenIdle) {
         m_trayController->SetState(hasConnections ? TrayIconState::Connected : TrayIconState::Error);
     } else if (hasBusyOperations) {
         m_trayController->SetState(TrayIconState::Connecting);
-        SetTimer(m_hwnd, c_timerAnimation, 200, nullptr);
+        SetTimer(m_hwnd, c_timerAnimation, 160, nullptr);
     } else {
         KillTimer(m_hwnd, c_timerAnimation);
         m_trayController->SetState(hasConnections ? TrayIconState::Connected : TrayIconState::Idle);
@@ -731,7 +731,7 @@ ApplicationHost::SubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam,
     }
 
     if (msg == WM_TIMER && wParam == c_timerAnimation && host->m_trayController) {
-        host->m_trayController->ToggleConnectingFrame();
+        host->m_trayController->AdvanceConnectingFrame();
         return 0;
     }
 

@@ -60,11 +60,19 @@
                     Padding="8,4"
                     Background="{ThemeResource SystemFillColorCriticalBackgroundBrush}"
                     BorderThickness="0">
-                    <TextBlock
-                        x:Name="DisconnectAllText"
-                        FontSize="12"
+                    <StackPanel
                         HorizontalAlignment="Center"
-                        Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                        Orientation="Horizontal"
+                        Spacing="6">
+                        <FontIcon
+                            FontSize="12"
+                            Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                            Glyph="&#xE711;" />
+                        <TextBlock
+                            x:Name="DisconnectAllText"
+                            FontSize="12"
+                            Foreground="{ThemeResource SystemFillColorCriticalBrush}" />
+                    </StackPanel>
                 </Button>
                 <Button
                     x:Name="ReconnectAllButton"
@@ -74,11 +82,19 @@
                     Padding="8,4"
                     Background="{ThemeResource AccentFillColorDefaultBrush}"
                     BorderThickness="0">
-                    <TextBlock
-                        x:Name="ReconnectAllText"
-                        FontSize="12"
+                    <StackPanel
                         HorizontalAlignment="Center"
-                        Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                        Orientation="Horizontal"
+                        Spacing="6">
+                        <FontIcon
+                            FontSize="12"
+                            Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                            Glyph="&#xE72C;" />
+                        <TextBlock
+                            x:Name="ReconnectAllText"
+                            FontSize="12"
+                            Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
+                    </StackPanel>
                 </Button>
             </Grid>
             <ProgressRing

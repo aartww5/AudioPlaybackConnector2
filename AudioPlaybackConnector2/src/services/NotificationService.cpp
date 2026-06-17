@@ -21,6 +21,10 @@ std::wstring NotificationText(std::string_view key, std::wstring_view replacemen
     return util::ReplacePlaceholders(std::wstring(_(key)), replacement);
 }
 
+std::wstring_view AsView(winrt::hstring const& value) {
+    return std::wstring_view(value.c_str(), value.size());
+}
+
 std::wstring XmlEscape(std::wstring_view value) {
     std::wstring result;
     result.reserve(value.size());
@@ -37,15 +41,6 @@ std::wstring XmlEscape(std::wstring_view value) {
     return result;
 }
 
-winrt::hstring ToastArguments(std::wstring_view action, winrt::hstring const& deviceId = {}) {
-    auto arguments =
-        winrt::hstring(L"action=") + winrt::Windows::Foundation::Uri::EscapeComponent(winrt::hstring(action));
-    if (!deviceId.empty()) {
-        arguments = arguments + L"&deviceId=" + winrt::Windows::Foundation::Uri::EscapeComponent(deviceId);
-    }
-    return arguments;
-}
-
 std::wstring UrlDecodeComponent(std::wstring_view value) {
     std::wstring normalized(value);
     std::replace(normalized.begin(), normalized.end(), L'+', L' ');
@@ -57,43 +52,70 @@ std::wstring UrlDecodeComponent(std::wstring_view value) {
     }
 }
 
-std::unordered_map<std::wstring, std::wstring> ParseToastArgumentString(winrt::hstring const& rawArguments) {
-    std::unordered_map<std::wstring, std::wstring> result;
-    std::wstring_view raw(rawArguments.c_str(), rawArguments.size());
-
-    size_t start = 0;
-    while (start <= raw.size()) {
-        const auto separator = raw.find(L'&', start);
-        const auto end = separator == std::wstring_view::npos ? raw.size() : separator;
-        const auto pair = raw.substr(start, end - start);
-
-        if (!pair.empty()) {
-            const auto equals = pair.find(L'=');
-            const auto key = equals == std::wstring_view::npos ? pair : pair.substr(0, equals);
-            const auto value = equals == std::wstring_view::npos ? std::wstring_view{} : pair.substr(equals + 1);
-            auto decodedKey = UrlDecodeComponent(key);
-            if (!decodedKey.empty()) {
-                result[std::move(decodedKey)] = UrlDecodeComponent(value);
-            }
+class ToastArguments final {
+public:
+    ToastArguments& Add(std::wstring_view key, std::wstring_view value) {
+        if (!m_value.empty()) {
+            m_value += L'&';
         }
-
-        if (separator == std::wstring_view::npos) break;
-        start = separator + 1;
+        m_value += EscapeComponent(key);
+        m_value += L'=';
+        m_value += EscapeComponent(value);
+        return *this;
     }
 
-    return result;
-}
+    ToastArguments& Action(std::wstring_view action) { return Add(L"action", action); }
 
-std::optional<std::wstring> FindToastArgument(std::unordered_map<std::wstring, std::wstring> const& arguments,
-                                              std::wstring_view key) {
-    auto it = arguments.find(std::wstring(key));
-    if (it == arguments.end() || it->second.empty()) return std::nullopt;
-    return it->second;
-}
+    ToastArguments& DeviceId(winrt::hstring const& deviceId) {
+        if (!deviceId.empty()) {
+            Add(L"deviceId", AsView(deviceId));
+        }
+        return *this;
+    }
 
-std::wstring_view AsView(winrt::hstring const& value) {
-    return std::wstring_view(value.c_str(), value.size());
-}
+    [[nodiscard]] winrt::hstring ToHString() const { return winrt::hstring(m_value); }
+
+    [[nodiscard]] static std::unordered_map<std::wstring, std::wstring> Parse(winrt::hstring const& rawArguments) {
+        std::unordered_map<std::wstring, std::wstring> result;
+        std::wstring_view raw(rawArguments.c_str(), rawArguments.size());
+
+        size_t start = 0;
+        while (start <= raw.size()) {
+            const auto separator = raw.find(L'&', start);
+            const auto end = separator == std::wstring_view::npos ? raw.size() : separator;
+            const auto pair = raw.substr(start, end - start);
+
+            if (!pair.empty()) {
+                const auto equals = pair.find(L'=');
+                const auto key = equals == std::wstring_view::npos ? pair : pair.substr(0, equals);
+                const auto value = equals == std::wstring_view::npos ? std::wstring_view{} : pair.substr(equals + 1);
+                auto decodedKey = UrlDecodeComponent(key);
+                if (!decodedKey.empty()) {
+                    result[std::move(decodedKey)] = UrlDecodeComponent(value);
+                }
+            }
+
+            if (separator == std::wstring_view::npos) break;
+            start = separator + 1;
+        }
+
+        return result;
+    }
+
+    [[nodiscard]] static std::optional<std::wstring>
+    Find(std::unordered_map<std::wstring, std::wstring> const& arguments, std::wstring_view key) {
+        auto it = arguments.find(std::wstring(key));
+        if (it == arguments.end() || it->second.empty()) return std::nullopt;
+        return it->second;
+    }
+
+private:
+    [[nodiscard]] static std::wstring EscapeComponent(std::wstring_view value) {
+        return std::wstring(winrt::Windows::Foundation::Uri::EscapeComponent(winrt::hstring(std::wstring(value))));
+    }
+
+    std::wstring m_value;
+};
 
 winrt::Windows::Foundation::DateTime ExpirationFromNow(std::chrono::seconds seconds) {
     return winrt::clock::now() + seconds;
@@ -105,51 +127,109 @@ bool IsPackagedProcess() {
     return result != APPMODEL_ERROR_NO_PACKAGE;
 }
 
-std::wstring BuildToastXml(std::wstring_view title,
-                           std::wstring_view body,
-                           std::wstring_view caption,
-                           std::wstring_view actionText,
-                           winrt::hstring const& actionArgs,
-                           std::wstring_view appLogoOverride,
-                           std::wstring_view audioXml,
-                           std::wstring_view duration = {}) {
-    std::wstring xml = L"<toast";
-    if (!duration.empty()) {
-        xml += L" duration=\"";
-        xml += XmlEscape(duration);
-        xml += L"\"";
+class ToastXmlBuilder final {
+public:
+    ToastXmlBuilder& Title(std::wstring_view value) {
+        m_title = value;
+        return *this;
     }
-    xml += L"><visual><binding template=\"ToastGeneric\">";
-    if (!appLogoOverride.empty()) {
-        xml += L"<image placement=\"appLogoOverride\" hint-crop=\"circle\" src=\"";
-        xml += XmlEscape(appLogoOverride);
-        xml += L"\"/>";
+
+    ToastXmlBuilder& Body(std::wstring_view value) {
+        m_body = value;
+        return *this;
     }
-    xml += L"<text>";
-    xml += XmlEscape(title);
-    xml += L"</text>";
-    if (!body.empty()) {
-        xml += L"<text>";
-        xml += XmlEscape(body);
+
+    ToastXmlBuilder& Caption(std::wstring_view value) {
+        m_caption = value;
+        return *this;
+    }
+
+    ToastXmlBuilder& Action(std::wstring_view text, ToastArguments const& arguments) {
+        m_actionText = text;
+        m_actionArguments = arguments.ToHString();
+        return *this;
+    }
+
+    ToastXmlBuilder& AppLogoOverride(std::wstring_view value) {
+        m_appLogoOverride = value;
+        return *this;
+    }
+
+    ToastXmlBuilder& Audio(std::wstring_view src) {
+        m_audioSrc = src;
+        m_silentAudio = false;
+        return *this;
+    }
+
+    ToastXmlBuilder& SilentAudio() {
+        m_audioSrc.clear();
+        m_silentAudio = true;
+        return *this;
+    }
+
+    ToastXmlBuilder& Duration(std::wstring_view value) {
+        m_duration = value;
+        return *this;
+    }
+
+    [[nodiscard]] std::wstring Build() const {
+        std::wstring xml = L"<toast";
+        if (!m_duration.empty()) {
+            xml += L" duration=\"";
+            xml += XmlEscape(m_duration);
+            xml += L"\"";
+        }
+        xml += L"><visual><binding template=\"ToastGeneric\">";
+        if (!m_appLogoOverride.empty()) {
+            xml += L"<image placement=\"appLogoOverride\" hint-crop=\"circle\" src=\"";
+            xml += XmlEscape(m_appLogoOverride);
+            xml += L"\"/>";
+        }
+        AppendText(xml, m_title);
+        if (!m_body.empty()) {
+            AppendText(xml, m_body);
+        }
+        if (!m_caption.empty()) {
+            AppendText(xml, m_caption, L" hint-style=\"caption\" hint-color=\"secondary\"");
+        }
+        xml += L"</binding></visual>";
+        if (!m_actionText.empty()) {
+            xml += L"<actions><action content=\"";
+            xml += XmlEscape(m_actionText);
+            xml += L"\" arguments=\"";
+            xml += XmlEscape(AsView(m_actionArguments));
+            xml += L"\"/></actions>";
+        }
+        if (m_silentAudio) {
+            xml += L"<audio silent=\"true\"/>";
+        } else if (!m_audioSrc.empty()) {
+            xml += L"<audio src=\"";
+            xml += XmlEscape(m_audioSrc);
+            xml += L"\"/>";
+        }
+        xml += L"</toast>";
+        return xml;
+    }
+
+private:
+    static void AppendText(std::wstring& xml, std::wstring_view text, std::wstring_view attributes = {}) {
+        xml += L"<text";
+        xml += attributes;
+        xml += L">";
+        xml += XmlEscape(text);
         xml += L"</text>";
     }
-    if (!caption.empty()) {
-        xml += L"<text hint-style=\"caption\" hint-color=\"secondary\">";
-        xml += XmlEscape(caption);
-        xml += L"</text>";
-    }
-    xml += L"</binding></visual>";
-    if (!actionText.empty()) {
-        xml += L"<actions><action content=\"";
-        xml += XmlEscape(actionText);
-        xml += L"\" arguments=\"";
-        xml += XmlEscape(AsView(actionArgs));
-        xml += L"\"/></actions>";
-    }
-    xml += audioXml;
-    xml += L"</toast>";
-    return xml;
-}
+
+    std::wstring m_title;
+    std::wstring m_body;
+    std::wstring m_caption;
+    std::wstring m_actionText;
+    winrt::hstring m_actionArguments;
+    std::wstring m_appLogoOverride;
+    std::wstring m_audioSrc;
+    std::wstring m_duration;
+    bool m_silentAudio = false;
+};
 
 } // namespace
 
@@ -355,22 +435,26 @@ void NotificationService::ShowAppStarted() {
     if (!ShouldShowNotifications()) return;
     auto title = NotificationText("Notification_AppStarted_Title");
     auto body = NotificationText("Notification_AppStarted_Body");
-    auto xml =
-        BuildToastXml(title, body, L"", L"", L"", L"ms-appx:///Images/ToastInfo.png", L"<audio silent=\"true\"/>");
+    auto xml = ToastXmlBuilder{}
+                   .Title(title)
+                   .Body(body)
+                   .AppLogoOverride(L"ms-appx:///Images/ToastInfo.png")
+                   .SilentAudio()
+                   .Build();
     ShowStatusToast(xml, ExpirationFromNow(std::chrono::seconds(7)));
 }
 
 void NotificationService::ShowDeviceConnected(winrt::hstring const& id, winrt::hstring const& deviceName) {
     if (!ShouldShowNotifications()) return;
     auto title = NotificationText("Notification_Connected", deviceName);
-    auto xml = BuildToastXml(title,
-                             L"",
-                             NotificationText("Notification_Connected_Caption"),
-                             NotificationText("Reconnect"),
-                             ToastArguments(L"reconnect", id),
-                             L"ms-appx:///Images/ToastConnected.png",
-                             L"<audio src=\"ms-winsoundevent:Notification.Default\"/>",
-                             L"long");
+    auto xml = ToastXmlBuilder{}
+                   .Title(title)
+                   .Caption(NotificationText("Notification_Connected_Caption"))
+                   .Action(NotificationText("Reconnect"), ToastArguments{}.Action(L"reconnect").DeviceId(id))
+                   .AppLogoOverride(L"ms-appx:///Images/ToastConnected.png")
+                   .Audio(L"ms-winsoundevent:Notification.Default")
+                   .Duration(L"long")
+                   .Build();
 
     ShowStatusToast(xml, ExpirationFromNow(std::chrono::minutes(1)));
 }
@@ -378,13 +462,12 @@ void NotificationService::ShowDeviceConnected(winrt::hstring const& id, winrt::h
 void NotificationService::ShowDeviceDisconnected(winrt::hstring const&, winrt::hstring const& deviceName) {
     if (!ShouldShowNotifications()) return;
     auto title = NotificationText("Notification_Disconnected", deviceName);
-    auto xml = BuildToastXml(title,
-                             NotificationText("Notification_Disconnected_Body"),
-                             L"",
-                             L"",
-                             L"",
-                             L"ms-appx:///Images/ToastWarning.png",
-                             L"<audio silent=\"true\"/>");
+    auto xml = ToastXmlBuilder{}
+                   .Title(title)
+                   .Body(NotificationText("Notification_Disconnected_Body"))
+                   .AppLogoOverride(L"ms-appx:///Images/ToastWarning.png")
+                   .SilentAudio()
+                   .Build();
 
     ShowStatusToast(xml, ExpirationFromNow(std::chrono::minutes(1)));
 }
@@ -392,13 +475,12 @@ void NotificationService::ShowDeviceDisconnected(winrt::hstring const&, winrt::h
 void NotificationService::ShowAutoReconnect(winrt::hstring const&, winrt::hstring const& deviceName) {
     if (!ShouldShowNotifications()) return;
     auto title = NotificationText("Notification_AutoReconnect", deviceName);
-    auto xml = BuildToastXml(title,
-                             NotificationText("Notification_AutoReconnect_Body"),
-                             L"",
-                             L"",
-                             L"",
-                             L"ms-appx:///Images/ToastReconnect.png",
-                             L"<audio silent=\"true\"/>");
+    auto xml = ToastXmlBuilder{}
+                   .Title(title)
+                   .Body(NotificationText("Notification_AutoReconnect_Body"))
+                   .AppLogoOverride(L"ms-appx:///Images/ToastReconnect.png")
+                   .SilentAudio()
+                   .Build();
 
     ShowStatusToast(xml, ExpirationFromNow(std::chrono::minutes(1)));
 }
@@ -406,13 +488,13 @@ void NotificationService::ShowAutoReconnect(winrt::hstring const&, winrt::hstrin
 void NotificationService::ShowAutoReconnectFailed(winrt::hstring const& id, winrt::hstring const& deviceName) {
     if (!ShouldShowNotifications()) return;
     auto title = NotificationText("Notification_AutoReconnectFailed_Title", deviceName);
-    auto xml = BuildToastXml(title,
-                             NotificationText("Notification_AutoReconnectFailed_Body"),
-                             L"",
-                             NotificationText("Notification_Retry"),
-                             ToastArguments(L"retry", id),
-                             L"ms-appx:///Images/ToastError.png",
-                             L"<audio src=\"ms-winsoundevent:Notification.Looping.Alarm2\"/>");
+    auto xml = ToastXmlBuilder{}
+                   .Title(title)
+                   .Body(NotificationText("Notification_AutoReconnectFailed_Body"))
+                   .Action(NotificationText("Notification_Retry"), ToastArguments{}.Action(L"retry").DeviceId(id))
+                   .AppLogoOverride(L"ms-appx:///Images/ToastError.png")
+                   .Audio(L"ms-winsoundevent:Notification.Looping.Alarm2")
+                   .Build();
 
     ShowStatusToast(xml, ExpirationFromNow(std::chrono::hours(1)));
 }
@@ -421,13 +503,14 @@ bool NotificationService::ShowUpdateAvailable(std::wstring const& latestVersion)
     if (!ShouldShowNotifications()) return false;
     auto title = NotificationText("Notification_UpdateAvailable_Title", latestVersion);
     auto body = NotificationText("Notification_UpdateAvailable_Body");
-    auto xml = BuildToastXml(title,
-                             body,
-                             L"",
-                             NotificationText("Notification_UpdateAvailable_Action"),
-                             ToastArguments(L"openUpdate"),
-                             L"ms-appx:///Images/ToastInfo.png",
-                             L"<audio silent=\"true\"/>");
+    auto xml =
+        ToastXmlBuilder{}
+            .Title(title)
+            .Body(body)
+            .Action(NotificationText("Notification_UpdateAvailable_Action"), ToastArguments{}.Action(L"openUpdate"))
+            .AppLogoOverride(L"ms-appx:///Images/ToastInfo.png")
+            .SilentAudio()
+            .Build();
 
     return ShowStatusToast(xml, ExpirationFromNow(std::chrono::hours(6)));
 }
@@ -445,9 +528,9 @@ void NotificationService::OnNotificationInvoked(AppNotifications::AppNotificatio
             reconnectCallback = m_reconnectCallback;
         }
 
-        auto parsedArguments = ParseToastArgumentString(args.Argument());
-        auto action = FindToastArgument(parsedArguments, L"action");
-        auto deviceId = FindToastArgument(parsedArguments, L"deviceId");
+        auto parsedArguments = ToastArguments::Parse(args.Argument());
+        auto action = ToastArguments::Find(parsedArguments, L"action");
+        auto deviceId = ToastArguments::Find(parsedArguments, L"deviceId");
 
         if (action && *action == L"openUpdate") {
             DebugTrace(L"[NotificationService] App notification invoked: action=openUpdate");
