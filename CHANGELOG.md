@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-06-17
+
+### Added
+- Persisted Settings window placement so size and position restore between sessions.
+- Added a minidump stack helper for local crash diagnostics.
+- Added release changelog extraction and dependency-aware App Installer feed generation for release packaging.
+
+### Changed
+- Polished the Settings window, notification actions, and device picker layouts, including adaptive device picker width and a flatter connection settings section.
+- Refactored reconnect planning, device diagnostics, startup task handling, toast construction, flyout styling, and shared UI button helpers.
+- Improved tray icon connecting animation timing and cursor behavior over the tray icon.
+
+### Fixed
+- Hardened async lifecycle and teardown paths, recoverable exception logging, and crash-report exception handling.
+- Made settings and update persistence more robust, including pending startup task state in Settings.
+- Prevented duplicate/pending device picker actions from racing while connect/disconnect work is in progress.
+- Tightened release asset discovery and local release bundle generation.
+
 ## [0.5.4] - 2026-06-08
 
 ### Changed

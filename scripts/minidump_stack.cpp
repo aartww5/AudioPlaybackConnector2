@@ -43,7 +43,8 @@ static bool ReadDumpMemory(DumpState const& dump, DWORD64 address, void* buffer,
     return false;
 }
 
-static BOOL CALLBACK ReadMemoryRoutine(HANDLE process, DWORD64 baseAddress, PVOID buffer, DWORD size, LPDWORD bytesRead) {
+static BOOL CALLBACK
+ReadMemoryRoutine(HANDLE process, DWORD64 baseAddress, PVOID buffer, DWORD size, LPDWORD bytesRead) {
     auto const dump = reinterpret_cast<DumpState const*>(process);
     if (ReadDumpMemory(*dump, baseAddress, buffer, size)) {
         *bytesRead = size;
@@ -90,7 +91,8 @@ int wmain(int argc, wchar_t** argv) {
 
     auto const dumpPath = argv[1];
     auto const symbolPath = argv[2];
-    auto file = CreateFileW(dumpPath, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    auto file =
+        CreateFileW(dumpPath, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (file == INVALID_HANDLE_VALUE) {
         std::fwprintf(stderr, L"CreateFile failed: %lu\n", GetLastError());
         return 1;
@@ -133,22 +135,20 @@ int wmain(int argc, wchar_t** argv) {
         for (ULONG i = 0; i < modules->NumberOfModules; ++i) {
             auto const& module = modules->Modules[i];
             auto name = ReadMiniString(base, module.ModuleNameRva);
-            auto loaded = SymLoadModuleExW(
-                GetCurrentProcess(),
-                nullptr,
-                name.empty() ? nullptr : name.c_str(),
-                nullptr,
-                module.BaseOfImage,
-                module.SizeOfImage,
-                nullptr,
-                0);
-            std::wprintf(
-                L"  0x%llx size=0x%lx ts=0x%lx %ls%s\n",
-                static_cast<unsigned long long>(module.BaseOfImage),
-                module.SizeOfImage,
-                module.TimeDateStamp,
-                name.c_str(),
-                loaded == 0 ? L" (symbols not loaded yet)" : L"");
+            auto loaded = SymLoadModuleExW(GetCurrentProcess(),
+                                           nullptr,
+                                           name.empty() ? nullptr : name.c_str(),
+                                           nullptr,
+                                           module.BaseOfImage,
+                                           module.SizeOfImage,
+                                           nullptr,
+                                           0);
+            std::wprintf(L"  0x%llx size=0x%lx ts=0x%lx %ls%s\n",
+                         static_cast<unsigned long long>(module.BaseOfImage),
+                         module.SizeOfImage,
+                         module.TimeDateStamp,
+                         name.c_str(),
+                         loaded == 0 ? L" (symbols not loaded yet)" : L"");
         }
     }
 
@@ -160,17 +160,21 @@ int wmain(int argc, wchar_t** argv) {
 
     auto const code = exception->ExceptionRecord.ExceptionCode;
     auto const address = exception->ExceptionRecord.ExceptionAddress;
-    std::printf("\nException thread=%lu code=0x%08lx address=0x%llx\n", exception->ThreadId, code, static_cast<unsigned long long>(address));
+    std::printf("\nException thread=%lu code=0x%08lx address=0x%llx\n",
+                exception->ThreadId,
+                code,
+                static_cast<unsigned long long>(address));
     for (ULONG i = 0; i < exception->ExceptionRecord.NumberParameters; ++i) {
-        std::printf("  param[%lu]=0x%llx\n", i, static_cast<unsigned long long>(exception->ExceptionRecord.ExceptionInformation[i]));
+        std::printf("  param[%lu]=0x%llx\n",
+                    i,
+                    static_cast<unsigned long long>(exception->ExceptionRecord.ExceptionInformation[i]));
     }
 
     auto* context = reinterpret_cast<CONTEXT*>(static_cast<std::byte*>(base) + exception->ThreadContext.Rva);
-    std::printf(
-        "Context RIP=0x%llx RSP=0x%llx RBP=0x%llx\n\n",
-        static_cast<unsigned long long>(context->Rip),
-        static_cast<unsigned long long>(context->Rsp),
-        static_cast<unsigned long long>(context->Rbp));
+    std::printf("Context RIP=0x%llx RSP=0x%llx RBP=0x%llx\n\n",
+                static_cast<unsigned long long>(context->Rip),
+                static_cast<unsigned long long>(context->Rsp),
+                static_cast<unsigned long long>(context->Rbp));
 
     STACKFRAME64 frame{};
     frame.AddrPC.Offset = context->Rip;
@@ -182,16 +186,15 @@ int wmain(int argc, wchar_t** argv) {
 
     auto machine = static_cast<DWORD>(IMAGE_FILE_MACHINE_AMD64);
     for (int frameIndex = 0; frameIndex < 80; ++frameIndex) {
-        if (!StackWalk64(
-                machine,
-                reinterpret_cast<HANDLE>(&dump),
-                nullptr,
-                &frame,
-                context,
-                ReadMemoryRoutine,
-                SymFunctionTableAccess64,
-                SymGetModuleBase64,
-                nullptr)) {
+        if (!StackWalk64(machine,
+                         reinterpret_cast<HANDLE>(&dump),
+                         nullptr,
+                         &frame,
+                         context,
+                         ReadMemoryRoutine,
+                         SymFunctionTableAccess64,
+                         SymGetModuleBase64,
+                         nullptr)) {
             break;
         }
         if (frame.AddrPC.Offset == 0) {

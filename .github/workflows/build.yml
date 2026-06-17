@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: windows-2022
     env:
       # Opt-in to Node.js 24 early to silence deprecation warnings from
       # actions/checkout@v4 and microsoft/setup-msbuild@v2 until they publish
