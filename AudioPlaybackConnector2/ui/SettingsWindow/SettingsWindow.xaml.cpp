@@ -10,6 +10,7 @@
 #include <core/StringResources.hpp>
 #include <core/ThemeHelper.hpp>
 #include <services/UpdateService.hpp>
+#include <ui/ButtonHelpers.hpp>
 #include <util/Util.hpp>
 
 using namespace winrt;
@@ -40,33 +41,6 @@ std::wstring BuildVersionText() {
         DebugTrace(L"[SettingsWindow] BuildVersionText failed: unknown exception");
         return label;
     }
-}
-
-StackPanel CreateIconTextContent(std::wstring_view glyph, winrt::hstring const& text) {
-    auto panel = StackPanel();
-    panel.Orientation(Orientation::Horizontal);
-    panel.Spacing(6);
-
-    auto icon = FontIcon();
-    icon.FontSize(14);
-    icon.Glyph(winrt::hstring(std::wstring(glyph)));
-    panel.Children().Append(icon);
-
-    auto label = TextBlock();
-    label.Text(text);
-    panel.Children().Append(label);
-    return panel;
-}
-
-void SetButtonLabel(Button const& button, TextBlock const& label, winrt::hstring const& text) {
-    label.Text(text);
-    ToolTipService::SetToolTip(button, box_value(text));
-    winrt::Microsoft::UI::Xaml::Automation::AutomationProperties::SetName(button, text);
-}
-
-void SetButtonLabel(Button const& button, winrt::hstring const& text) {
-    ToolTipService::SetToolTip(button, box_value(text));
-    winrt::Microsoft::UI::Xaml::Automation::AutomationProperties::SetName(button, text);
 }
 
 } // namespace
@@ -134,15 +108,15 @@ void SettingsWindow::RootGrid_Loaded(IInspectable const&, RoutedEventArgs const&
     CopyrightText().Text(winrt::hstring(_("About_Copyright")));
     CheckForUpdatesLabel().Text(winrt::hstring(_("Settings_CheckForUpdates")));
     CheckForUpdatesDesc().Text(winrt::hstring(_("Settings_CheckForUpdates_Desc")));
-    SetButtonLabel(
+    apc::ui::SetButtonLabel(
         CheckForUpdatesButton(), CheckForUpdatesButtonText(), winrt::hstring(_("Settings_CheckForUpdates_Button")));
-    SetButtonLabel(
+    apc::ui::SetButtonLabel(
         OpenAppInstallerButton(), OpenAppInstallerButtonText(), winrt::hstring(_("Settings_OpenAppInstaller")));
     WindowPlacementLabel().Text(winrt::hstring(_("Settings_WindowPlacement")));
     WindowPlacementDesc().Text(winrt::hstring(_("Settings_WindowPlacement_Desc")));
-    SetButtonLabel(ResetWindowPlacementButton(),
-                   ResetWindowPlacementButtonText(),
-                   winrt::hstring(_("Settings_WindowPlacement_Reset")));
+    apc::ui::SetButtonLabel(ResetWindowPlacementButton(),
+                            ResetWindowPlacementButtonText(),
+                            winrt::hstring(_("Settings_WindowPlacement_Reset")));
 
     InitializeSettingsContent();
 
@@ -582,8 +556,8 @@ void SettingsWindow::RebuildDeviceList() {
         forgetBtn.MinWidth(80);
         forgetBtn.VerticalAlignment(VerticalAlignment::Center);
         auto forgetText = winrt::hstring(_("Device_Forget"));
-        forgetBtn.Content(CreateIconTextContent(L"\xE74D", forgetText));
-        SetButtonLabel(forgetBtn, forgetText);
+        forgetBtn.Content(apc::ui::CreateIconTextContent(L"\xE74D", forgetText));
+        apc::ui::SetButtonLabel(forgetBtn, forgetText);
         forgetBtn.Click([id = dev.Id, weak](auto, auto) {
             if (auto self = weak.get()) {
                 if (auto settingsController = self->m_settingsController) {

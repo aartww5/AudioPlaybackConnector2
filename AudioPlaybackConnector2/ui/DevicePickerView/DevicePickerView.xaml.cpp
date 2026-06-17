@@ -6,6 +6,7 @@
 
 #include <core/DeviceManager.hpp>
 #include <core/StringResources.hpp>
+#include <ui/ButtonHelpers.hpp>
 #include <util/Util.hpp>
 
 using namespace winrt;
@@ -39,29 +40,6 @@ void CancelRefreshDevicesOperation(winrt::Windows::Foundation::IAsyncOperation<
     } catch (...) {
         DebugTrace(L"[DevicePickerView] ERROR: {0} failed to cancel RefreshDevicesAsync: unknown exception", context);
     }
-}
-
-Button CreateDeviceActionButton(std::wstring_view glyph,
-                                winrt::hstring const& label,
-                                winrt::Microsoft::UI::Xaml::Media::Brush const& foreground) {
-    auto button = Button();
-    button.Width(30);
-    button.Height(28);
-    button.Padding({0});
-    button.Background(Media::SolidColorBrush(winrt::Windows::UI::Colors::Transparent()));
-    button.BorderThickness({0});
-    button.VerticalAlignment(VerticalAlignment::Center);
-    ToolTipService::SetToolTip(button, box_value(label));
-    winrt::Microsoft::UI::Xaml::Automation::AutomationProperties::SetName(button, label);
-
-    auto icon = FontIcon();
-    icon.Glyph(winrt::hstring(std::wstring(glyph)));
-    icon.FontSize(14);
-    if (foreground) {
-        icon.Foreground(foreground);
-    }
-    button.Content(icon);
-    return button;
 }
 
 class DevicePickerSizer final {
@@ -436,7 +414,9 @@ ListViewItem DevicePickerView::BuildDeviceListItem(DevicePickerItemViewModel con
         if (auto brush = Application::Current().Resources().TryLookup(box_value(L"AccentFillColorDefaultBrush"))) {
             reconnectBrush = brush.as<Media::Brush>();
         }
-        auto reconnectBtn = CreateDeviceActionButton(L"\xE72C", winrt::hstring(_("Reconnect")), reconnectBrush);
+        apc::ui::IconButtonOptions reconnectOptions;
+        reconnectOptions.Foreground = reconnectBrush;
+        auto reconnectBtn = apc::ui::CreateIconButton(L"\xE72C", winrt::hstring(_("Reconnect")), reconnectOptions);
         reconnectBtn.IsEnabled(!isBusy);
         auto weak = get_weak();
         reconnectBtn.Click([weak, devId](auto const&, auto const&) {
@@ -447,7 +427,9 @@ ListViewItem DevicePickerView::BuildDeviceListItem(DevicePickerItemViewModel con
         if (auto brush = Application::Current().Resources().TryLookup(box_value(L"SystemFillColorCriticalBrush"))) {
             disconnectBrush = brush.as<Media::Brush>();
         }
-        auto disconnectBtn = CreateDeviceActionButton(L"\xE711", winrt::hstring(_("Disconnect")), disconnectBrush);
+        apc::ui::IconButtonOptions disconnectOptions;
+        disconnectOptions.Foreground = disconnectBrush;
+        auto disconnectBtn = apc::ui::CreateIconButton(L"\xE711", winrt::hstring(_("Disconnect")), disconnectOptions);
         disconnectBtn.IsEnabled(!isBusy);
         disconnectBtn.Click([weak, devId](auto const&, auto const&) {
             if (auto self = weak.get()) self->OnDeviceDisconnectClicked(devId);

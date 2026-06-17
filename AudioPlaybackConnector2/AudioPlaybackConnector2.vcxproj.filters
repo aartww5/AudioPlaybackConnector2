@@ -172,6 +172,9 @@
     <ClInclude Include="include\services\UpdateService.hpp">
       <Filter>include\services</Filter>
     </ClInclude>
+    <ClInclude Include="include\ui\ButtonHelpers.hpp">
+      <Filter>include\ui</Filter>
+    </ClInclude>
     <ClInclude Include="include\ui\DevicePickerViewModel.hpp">
       <Filter>include\ui</Filter>
     </ClInclude>
