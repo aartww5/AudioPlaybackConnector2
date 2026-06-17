@@ -1,6 +1,7 @@
 #include <pch.h>
 #include <core/DeviceManager.hpp>
 #include <core/AudioConnectionService.hpp>
+#include <core/DeviceManagerDiagnostics.hpp>
 #include <core/StringResources.hpp>
 #include <thread>
 #include <utility>
@@ -25,14 +26,6 @@ inline void ReportAsyncConnectionError(DeviceManager& dm,
     dm.DeviceActivityChanged(deviceId);
 }
 
-std::wstring_view ConnectionStateName(winrt::Windows::Media::Audio::AudioPlaybackConnectionState state) {
-    switch (state) {
-        case winrt::Windows::Media::Audio::AudioPlaybackConnectionState::Closed: return L"Closed";
-        case winrt::Windows::Media::Audio::AudioPlaybackConnectionState::Opened: return L"Opened";
-        default: return L"UnknownState";
-    }
-}
-
 void PopulateConnectionMetadata(DeviceConnectionInfo& info,
                                 winrt::Windows::Devices::Enumeration::DeviceInformation const& device) {
     try {
@@ -52,19 +45,6 @@ void PopulateConnectionMetadata(DeviceConnectionInfo& info,
     }
     if (info.Name.empty()) {
         info.Name = info.Id;
-    }
-}
-
-std::wstring_view OpenResultStatusName(winrt::Windows::Media::Audio::AudioPlaybackConnectionOpenResultStatus status) {
-    switch (status) {
-        case winrt::Windows::Media::Audio::AudioPlaybackConnectionOpenResultStatus::Success: return L"Success";
-        case winrt::Windows::Media::Audio::AudioPlaybackConnectionOpenResultStatus::RequestTimedOut:
-            return L"RequestTimedOut";
-        case winrt::Windows::Media::Audio::AudioPlaybackConnectionOpenResultStatus::DeniedBySystem:
-            return L"DeniedBySystem";
-        case winrt::Windows::Media::Audio::AudioPlaybackConnectionOpenResultStatus::UnknownFailure:
-            return L"UnknownFailure";
-        default: return L"UnknownStatus";
     }
 }
 
@@ -670,20 +650,7 @@ void DeviceManager::StopConnectionHeartbeat() {
 }
 
 void DeviceManager::LogConnectionSnapshot(winrt::hstring const& reason) const {
-    struct Snapshot {
-        winrt::hstring Id;
-        winrt::hstring Name;
-        bool HasConnection = false;
-        bool IsOpen = false;
-        bool AutoReconnect = false;
-        bool Disconnecting = false;
-        bool Reconnecting = false;
-        bool CancelledReconnect = false;
-        std::size_t ReconnectAttempts = 0;
-        std::size_t ConnectAttemptId = 0;
-    };
-
-    std::vector<Snapshot> snapshots;
+    std::vector<DeviceManagerDiagnosticSnapshot> snapshots;
     bool allReconnectsCancelled = false;
     std::size_t deviceCacheSize = m_discoveryService ? m_discoveryService->CacheSize() : 0;
     std::vector<std::pair<std::wstring, DeviceConnectionInfo>> allConnections;
@@ -693,7 +660,7 @@ void DeviceManager::LogConnectionSnapshot(winrt::hstring const& reason) const {
         snapshots.reserve(allConnections.size());
         allReconnectsCancelled = m_reconnectController.AllReconnectsCancelled();
         for (auto const& [id, info] : allConnections) {
-            Snapshot snapshot;
+            DeviceManagerDiagnosticSnapshot snapshot;
             snapshot.Id = winrt::hstring(id);
             snapshot.Name = !info.Name.empty() ? info.Name : id;
             snapshot.HasConnection = static_cast<bool>(info.Connection);
@@ -710,35 +677,7 @@ void DeviceManager::LogConnectionSnapshot(winrt::hstring const& reason) const {
         }
     }
 
-    DebugTrace(L"[DeviceManager] Snapshot reason={0} connections={1} cache={2} allReconnectsCancelled={3}",
-               std::wstring(reason),
-               snapshots.size(),
-               deviceCacheSize,
-               allReconnectsCancelled);
-
-    for (auto const& snapshot : snapshots) {
-        std::wstring state = L"<null>";
-        if (snapshot.HasConnection) {
-            // Avoid calling Connection.State() from the heartbeat timer thread.
-            // We log the cached open-state instead to reduce cross-apartment
-            // WinRT calls in diagnostics-only code.
-            state = snapshot.IsOpen ? L"Opened(cached)" : L"Closed(cached)";
-        }
-
-        DebugTrace(
-            L"[DeviceManager] Snapshot device id={0} name={1} isOpen={2} state={3} autoReconnect={4} disconnecting={5} "
-            L"reconnecting={6} cancelledReconnect={7} reconnectAttempts={8} connectAttemptId={9}",
-            std::wstring(snapshot.Id),
-            std::wstring(snapshot.Name),
-            snapshot.IsOpen,
-            state,
-            snapshot.AutoReconnect,
-            snapshot.Disconnecting,
-            snapshot.Reconnecting,
-            snapshot.CancelledReconnect,
-            snapshot.ReconnectAttempts,
-            snapshot.ConnectAttemptId);
-    }
+    LogDeviceManagerDiagnosticSnapshot(reason, deviceCacheSize, allReconnectsCancelled, snapshots);
 }
 
 /*------------------------------------------------------------------------------------------------------------*/
@@ -1013,7 +952,7 @@ DeviceManager::ConnectInternalAsync(winrt::Windows::Devices::Enumeration::Device
         auto result = co_await AudioConnectionService::OpenAsync(connection);
         DebugTrace(L"[DeviceManager] OpenAsync completed: id={0} status={1} extended=0x{2:08X}",
                    std::wstring(deviceId),
-                   OpenResultStatusName(result.Status()),
+                   DeviceOpenResultStatusName(result.Status()),
                    static_cast<uint32_t>(result.ExtendedError()));
         if (!IsConnectAttemptCurrent(deviceId, attemptId)) co_return;
 
@@ -1243,8 +1182,9 @@ void DeviceManager::OnConnectionStateChanged(winrt::hstring deviceId,
 
     try {
         auto state = sender.State();
-        DebugTrace(
-            L"[DeviceManager] StateChanged: id={0} state={1}", std::wstring(deviceId), ConnectionStateName(state));
+        DebugTrace(L"[DeviceManager] StateChanged: id={0} state={1}",
+                   std::wstring(deviceId),
+                   DeviceConnectionStateName(state));
         if (state != winrt::Windows::Media::Audio::AudioPlaybackConnectionState::Closed) return;
     } catch (winrt::hresult_error const& ex) {
         DebugTrace(L"[DeviceManager] StateChanged callback failed: 0x{0:X} {1}",

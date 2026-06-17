@@ -1,0 +1,56 @@
+#include <pch.h>
+#include <core/DeviceManagerDiagnostics.hpp>
+
+std::wstring_view DeviceConnectionStateName(winrt::Windows::Media::Audio::AudioPlaybackConnectionState state) noexcept {
+    switch (state) {
+        case winrt::Windows::Media::Audio::AudioPlaybackConnectionState::Closed: return L"Closed";
+        case winrt::Windows::Media::Audio::AudioPlaybackConnectionState::Opened: return L"Opened";
+        default: return L"UnknownState";
+    }
+}
+
+std::wstring_view
+DeviceOpenResultStatusName(winrt::Windows::Media::Audio::AudioPlaybackConnectionOpenResultStatus status) noexcept {
+    switch (status) {
+        case winrt::Windows::Media::Audio::AudioPlaybackConnectionOpenResultStatus::Success: return L"Success";
+        case winrt::Windows::Media::Audio::AudioPlaybackConnectionOpenResultStatus::RequestTimedOut:
+            return L"RequestTimedOut";
+        case winrt::Windows::Media::Audio::AudioPlaybackConnectionOpenResultStatus::DeniedBySystem:
+            return L"DeniedBySystem";
+        case winrt::Windows::Media::Audio::AudioPlaybackConnectionOpenResultStatus::UnknownFailure:
+            return L"UnknownFailure";
+        default: return L"UnknownStatus";
+    }
+}
+
+void LogDeviceManagerDiagnosticSnapshot(winrt::hstring const& reason,
+                                        std::size_t deviceCacheSize,
+                                        bool allReconnectsCancelled,
+                                        std::vector<DeviceManagerDiagnosticSnapshot> const& snapshots) {
+    DebugTrace(L"[DeviceManager] Snapshot reason={0} connections={1} cache={2} allReconnectsCancelled={3}",
+               std::wstring(reason),
+               snapshots.size(),
+               deviceCacheSize,
+               allReconnectsCancelled);
+
+    for (auto const& snapshot : snapshots) {
+        std::wstring state = L"<null>";
+        if (snapshot.HasConnection) {
+            state = snapshot.IsOpen ? L"Opened(cached)" : L"Closed(cached)";
+        }
+
+        DebugTrace(
+            L"[DeviceManager] Snapshot device id={0} name={1} isOpen={2} state={3} autoReconnect={4} disconnecting={5} "
+            L"reconnecting={6} cancelledReconnect={7} reconnectAttempts={8} connectAttemptId={9}",
+            std::wstring(snapshot.Id),
+            std::wstring(snapshot.Name),
+            snapshot.IsOpen,
+            state,
+            snapshot.AutoReconnect,
+            snapshot.Disconnecting,
+            snapshot.Reconnecting,
+            snapshot.CancelledReconnect,
+            snapshot.ReconnectAttempts,
+            snapshot.ConnectAttemptId);
+    }
+}

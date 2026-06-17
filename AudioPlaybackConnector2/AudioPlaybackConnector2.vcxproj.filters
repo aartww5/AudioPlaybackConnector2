@@ -56,6 +56,9 @@
     <ClCompile Include="src\core\DeviceDiscoveryService.cpp">
       <Filter>src\core</Filter>
     </ClCompile>
+    <ClCompile Include="src\core\DeviceManagerDiagnostics.cpp">
+      <Filter>src\core</Filter>
+    </ClCompile>
     <ClCompile Include="src\core\DeviceSessionStore.cpp">
       <Filter>src\core</Filter>
     </ClCompile>
@@ -155,6 +158,9 @@
       <Filter>include\core</Filter>
     </ClInclude>
     <ClInclude Include="include\core\DeviceDiscoveryService.hpp">
+      <Filter>include\core</Filter>
+    </ClInclude>
+    <ClInclude Include="include\core\DeviceManagerDiagnostics.hpp">
       <Filter>include\core</Filter>
     </ClInclude>
     <ClInclude Include="include\core\DeviceSessionStore.hpp">
