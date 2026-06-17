@@ -452,7 +452,7 @@ void ApplicationHost::RefreshTrayVisualState(bool forceErrorWhenIdle) {
         m_trayController->SetState(hasConnections ? TrayIconState::Connected : TrayIconState::Error);
     } else if (hasBusyOperations) {
         m_trayController->SetState(TrayIconState::Connecting);
-        SetTimer(m_hwnd, c_timerAnimation, 160, nullptr);
+        SetTimer(m_hwnd, c_timerAnimation, 100, nullptr);
     } else {
         KillTimer(m_hwnd, c_timerAnimation);
         m_trayController->SetState(hasConnections ? TrayIconState::Connected : TrayIconState::Idle);
