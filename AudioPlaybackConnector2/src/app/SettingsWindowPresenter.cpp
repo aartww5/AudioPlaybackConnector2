@@ -26,12 +26,23 @@ void SettingsWindowPresenter::Show(std::shared_ptr<ISettingsController> settings
 
     try {
         m_settingsWindow = winrt::AudioPlaybackConnector2::SettingsWindow();
-        auto placement =
+        auto defaultPlacement =
             trayController ? trayController->GetSettingsWindowPlacement() : util::CalculateSettingsWindowPlacement();
+        auto placement = defaultPlacement;
+
+        if (settingsController) {
+            auto snapshot = settingsController->Snapshot();
+            if (snapshot.SettingsWindowBounds) {
+                placement = util::CalculateSettingsWindowPlacementFromBounds(
+                    POINT{snapshot.SettingsWindowBounds->X, snapshot.SettingsWindowBounds->Y},
+                    SIZE{snapshot.SettingsWindowBounds->Width, snapshot.SettingsWindowBounds->Height});
+            }
+        }
 
         auto impl = m_settingsWindow.as<winrt::AudioPlaybackConnector2::implementation::SettingsWindow>();
         if (impl) {
             impl->SetSettingsController(std::move(settingsController));
+            impl->SetDefaultPlacement(defaultPlacement);
             impl->SetTargetPlacement(placement);
         }
 

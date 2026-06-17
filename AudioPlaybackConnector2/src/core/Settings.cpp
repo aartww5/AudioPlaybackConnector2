@@ -30,6 +30,27 @@ GetOptionalInt64(winrt::Windows::Data::Json::JsonObject const& json, winrt::hstr
                : fallback;
 }
 
+int32_t
+GetOptionalInt32(winrt::Windows::Data::Json::JsonObject const& json, winrt::hstring const& key, int32_t fallback) {
+    if (!json.HasKey(key)) return fallback;
+    auto value = json.Lookup(key);
+    if (value.ValueType() != winrt::Windows::Data::Json::JsonValueType::Number) return fallback;
+
+    auto number = value.GetNumber();
+    if (number < static_cast<double>(std::numeric_limits<int32_t>::min()) ||
+        number > static_cast<double>(std::numeric_limits<int32_t>::max())) {
+        return fallback;
+    }
+    return static_cast<int32_t>(number);
+}
+
+winrt::Windows::Data::Json::JsonObject GetOptionalObject(winrt::Windows::Data::Json::JsonObject const& json,
+                                                         winrt::hstring const& key) {
+    if (!json.HasKey(key)) return nullptr;
+    auto value = json.Lookup(key);
+    return value.ValueType() == winrt::Windows::Data::Json::JsonValueType::Object ? value.GetObject() : nullptr;
+}
+
 winrt::Windows::Data::Json::JsonArray GetOptionalArray(winrt::Windows::Data::Json::JsonObject const& json,
                                                        winrt::hstring const& key) {
     if (!json.HasKey(key)) return nullptr;
@@ -69,6 +90,7 @@ void Settings::Load(HINSTANCE hInst) {
         std::wstring language = L"system";
         int64_t lastUpdateCheckUnixSeconds = 0;
         std::wstring lastNotifiedUpdateVersion;
+        std::optional<PersistedWindowBounds> settingsWindowBounds;
         std::vector<DeviceSettings> devices;
         std::vector<std::wstring> lastConnectedIds;
 
@@ -82,6 +104,19 @@ void Settings::Load(HINSTANCE hInst) {
             auto lang = GetOptionalString(json, L"language", L"system");
             language = lang.empty() ? L"system" : std::wstring(lang);
             if (language == L"en" && PRIMARYLANGID(GetUserDefaultUILanguage()) != LANG_ENGLISH) language = L"system";
+        }
+
+        if (auto boundsJson = GetOptionalObject(json, L"settingsWindowBounds")) {
+            PersistedWindowBounds bounds;
+            bounds.X = GetOptionalInt32(boundsJson, L"x", 0);
+            bounds.Y = GetOptionalInt32(boundsJson, L"y", 0);
+            bounds.Width = GetOptionalInt32(boundsJson, L"width", 0);
+            bounds.Height = GetOptionalInt32(boundsJson, L"height", 0);
+            if (bounds.Width > 0 && bounds.Height > 0) {
+                settingsWindowBounds = bounds;
+            } else {
+                DebugTrace(L"[Settings] Load WARNING: ignoring invalid settings window bounds");
+            }
         }
 
         if (auto array = GetOptionalArray(json, L"devices")) {
@@ -115,6 +150,7 @@ void Settings::Load(HINSTANCE hInst) {
         m_data.Language = std::move(language);
         m_data.LastUpdateCheckUnixSeconds = lastUpdateCheckUnixSeconds;
         m_data.LastNotifiedUpdateVersion = std::move(lastNotifiedUpdateVersion);
+        m_data.SettingsWindowBounds = settingsWindowBounds;
         m_data.Devices = std::move(devices);
         m_data.LastConnectedIds = std::move(lastConnectedIds);
     } catch (winrt::hresult_error const& ex) {
@@ -147,6 +183,21 @@ void Settings::Save(HINSTANCE hInst) {
                         static_cast<double>(snapshot.LastUpdateCheckUnixSeconds)));
         json.Insert(L"lastNotifiedUpdateVersion",
                     winrt::Windows::Data::Json::JsonValue::CreateStringValue(snapshot.LastNotifiedUpdateVersion));
+
+        if (snapshot.SettingsWindowBounds) {
+            winrt::Windows::Data::Json::JsonObject boundsJson;
+            boundsJson.Insert(
+                L"x", winrt::Windows::Data::Json::JsonValue::CreateNumberValue(snapshot.SettingsWindowBounds->X));
+            boundsJson.Insert(
+                L"y", winrt::Windows::Data::Json::JsonValue::CreateNumberValue(snapshot.SettingsWindowBounds->Y));
+            boundsJson.Insert(
+                L"width",
+                winrt::Windows::Data::Json::JsonValue::CreateNumberValue(snapshot.SettingsWindowBounds->Width));
+            boundsJson.Insert(
+                L"height",
+                winrt::Windows::Data::Json::JsonValue::CreateNumberValue(snapshot.SettingsWindowBounds->Height));
+            json.Insert(L"settingsWindowBounds", boundsJson);
+        }
 
         winrt::Windows::Data::Json::JsonArray devArr;
         for (const auto& d : snapshot.Devices) {

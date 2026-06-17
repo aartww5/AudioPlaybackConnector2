@@ -18,6 +18,8 @@ using namespace winrt::Microsoft::UI::Xaml::Controls;
 using namespace winrt::Microsoft::UI::Windowing;
 
 namespace {
+constexpr auto c_placementSaveDelay = std::chrono::seconds(3);
+
 std::wstring BuildVersionText() {
     std::wstring label(_("About_Version"));
     try {
@@ -63,9 +65,19 @@ LRESULT CALLBACK SettingsWindow::SettingsWindowSubclassProc(
         return 0;
     }
 
+    if (self && msg == WM_EXITSIZEMOVE) {
+        self->QueuePlacementSave();
+    } else if (self && msg == WM_WINDOWPOSCHANGED) {
+        self->QueuePlacementSave();
+    }
+
     if (msg == WM_NCDESTROY) {
         RemoveWindowSubclass(hwnd, SettingsWindowSubclassProc, uIdSubclass);
-        if (self) self->m_subclassInstalled = false;
+        if (self) {
+            self->m_capturePlacementChanges = false;
+            ++self->m_placementSaveRequestId;
+            self->m_subclassInstalled = false;
+        }
     }
 
     return DefSubclassProc(hwnd, msg, wParam, lParam);
@@ -97,6 +109,9 @@ void SettingsWindow::RootGrid_Loaded(IInspectable const&, RoutedEventArgs const&
     CheckForUpdatesDesc().Text(winrt::hstring(_("Settings_CheckForUpdates_Desc")));
     CheckForUpdatesButton().Content(box_value(winrt::hstring(_("Settings_CheckForUpdates_Button"))));
     OpenAppInstallerButton().Content(box_value(winrt::hstring(_("Settings_OpenAppInstaller"))));
+    WindowPlacementLabel().Text(winrt::hstring(_("Settings_WindowPlacement")));
+    WindowPlacementDesc().Text(winrt::hstring(_("Settings_WindowPlacement_Desc")));
+    ResetWindowPlacementButton().Content(box_value(winrt::hstring(_("Settings_WindowPlacement_Reset"))));
 
     InitializeSettingsContent();
 
@@ -142,6 +157,48 @@ void SettingsWindow::RevealAtTarget(HWND hwnd) {
         appWindow.Show();
     }
     SetForegroundWindow(hwnd);
+    m_capturePlacementChanges = true;
+}
+
+void SettingsWindow::QueuePlacementSave() {
+    if (!m_capturePlacementChanges) return;
+    if (!StoreCurrentPlacement()) return;
+
+    auto requestId = ++m_placementSaveRequestId;
+    SavePlacementAfterDelayAsync(requestId);
+}
+
+winrt::fire_and_forget SettingsWindow::SavePlacementAfterDelayAsync(uint64_t requestId) {
+    auto lifetime = get_strong();
+    co_await winrt::resume_after(c_placementSaveDelay);
+
+    if (requestId != m_placementSaveRequestId.load()) co_return;
+    if (auto controller = m_settingsController) {
+        controller->Save();
+    }
+}
+
+bool SettingsWindow::StoreCurrentPlacement() {
+    if (!m_capturePlacementChanges) return false;
+
+    auto controller = m_settingsController;
+    if (!controller) return false;
+
+    auto hwnd = util::GetWindowHandle(*this);
+    if (!hwnd || !IsWindow(hwnd) || !IsWindowVisible(hwnd) || IsIconic(hwnd) || IsZoomed(hwnd)) return false;
+
+    RECT rect{};
+    if (!GetWindowRect(hwnd, &rect)) return false;
+
+    auto width = rect.right - rect.left;
+    auto height = rect.bottom - rect.top;
+    if (width <= 0 || height <= 0) return false;
+    if (rect.left <= -30000 || rect.top <= -30000) return false;
+
+    return controller->SetSettingsWindowBounds(PersistedWindowBounds{static_cast<int32_t>(rect.left),
+                                                                     static_cast<int32_t>(rect.top),
+                                                                     static_cast<int32_t>(width),
+                                                                     static_cast<int32_t>(height)});
 }
 
 void SettingsWindow::StartWithWindowsToggle_Toggled(IInspectable const& sender, RoutedEventArgs const&) {
@@ -156,6 +213,35 @@ void SettingsWindow::CheckForUpdatesButton_Click(IInspectable const&, RoutedEven
 
 void SettingsWindow::OpenAppInstallerButton_Click(IInspectable const&, RoutedEventArgs const&) {
     UpdateService::LaunchAppInstallerAsync();
+}
+
+void SettingsWindow::ResetWindowPlacementButton_Click(IInspectable const&, RoutedEventArgs const&) {
+    ResetWindowPlacement();
+}
+
+void SettingsWindow::ResetWindowPlacement() {
+    ++m_placementSaveRequestId;
+    m_capturePlacementChanges = false;
+
+    if (auto controller = m_settingsController) {
+        if (controller->ClearSettingsWindowBounds()) {
+            controller->Save();
+        }
+    }
+
+    m_targetPlacement = m_defaultPlacement;
+    auto appWindow = this->AppWindow();
+    if (appWindow) {
+        appWindow.Resize({m_defaultPlacement.size.cx, m_defaultPlacement.size.cy});
+        appWindow.Move({m_defaultPlacement.position.x, m_defaultPlacement.position.y});
+        appWindow.Show();
+    }
+
+    if (auto hwnd = util::GetWindowHandle(*this)) {
+        SetForegroundWindow(hwnd);
+    }
+
+    m_capturePlacementChanges = true;
 }
 
 void SettingsWindow::InitializeSettingsContent() {
@@ -482,6 +568,10 @@ void SettingsWindow::RebuildDeviceList() {
 
 void SettingsWindow::SetSettingsController(std::shared_ptr<ISettingsController> controller) {
     m_settingsController = std::move(controller);
+}
+
+void SettingsWindow::SetDefaultPlacement(util::SettingsWindowPlacement placement) {
+    m_defaultPlacement = placement;
 }
 
 void SettingsWindow::SetTargetPlacement(util::SettingsWindowPlacement placement) {

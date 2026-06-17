@@ -217,6 +217,27 @@
                             </StackPanel>
                         </Grid>
 
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                            <StackPanel MinWidth="0">
+                                <TextBlock
+                                    x:Name="WindowPlacementLabel"
+                                    Text="Window placement"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    x:Name="WindowPlacementDesc"
+                                    FontSize="12"
+                                    Foreground="{ThemeResource SystemControlForegroundBaseMediumBrush}"
+                                    Text="Saves the settings window size and position for the next time you open it."
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
+                            <Button
+                                x:Name="ResetWindowPlacementButton"
+                                Grid.Column="1"
+                                VerticalAlignment="Center"
+                                Click="ResetWindowPlacementButton_Click"
+                                Content="Reset" />
+                        </Grid>
+
                         <InfoBar
                             x:Name="UpdateInfoBar"
                             HorizontalAlignment="Stretch"

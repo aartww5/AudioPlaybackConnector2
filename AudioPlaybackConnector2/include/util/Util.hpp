@@ -232,6 +232,14 @@ inline int32_t ClampInt(int32_t value, int32_t minValue, int32_t maxValue) {
     return std::clamp(value, minValue, maxValue);
 }
 
+inline SIZE GetSettingsWindowMinTrackSizeForWorkArea(RECT const& workArea, UINT dpi) {
+    const int32_t workWidth = std::max<int32_t>(1, workArea.right - workArea.left);
+    const int32_t workHeight = std::max<int32_t>(1, workArea.bottom - workArea.top);
+
+    return SIZE{std::min(DipToPixel(c_settingsWindowMinWidthDip, dpi), workWidth),
+                std::min(DipToPixel(c_settingsWindowMinHeightDip, dpi), workHeight)};
+}
+
 inline SettingsWindowPlacement CalculateSettingsWindowPlacement(std::optional<RECT> anchorRect = std::nullopt) {
     auto monitor = GetSettingsWindowTargetMonitor(anchorRect);
     auto workArea = GetMonitorWorkArea(monitor);
@@ -272,6 +280,24 @@ inline SettingsWindowPlacement CalculateSettingsWindowPlacement(std::optional<RE
     return SettingsWindowPlacement{POINT{x, y}, SIZE{width, height}, workArea, dpi};
 }
 
+inline SettingsWindowPlacement CalculateSettingsWindowPlacementFromBounds(POINT position, SIZE size) {
+    RECT desiredRect{
+        position.x, position.y, position.x + std::max<int32_t>(1, size.cx), position.y + std::max<int32_t>(1, size.cy)};
+    auto monitor = MonitorFromRect(&desiredRect, MONITOR_DEFAULTTONEAREST);
+    auto workArea = GetMonitorWorkArea(monitor);
+    auto dpi = GetMonitorDpi(monitor);
+    auto minTrackSize = GetSettingsWindowMinTrackSizeForWorkArea(workArea, dpi);
+
+    const int32_t workWidth = std::max<int32_t>(1, workArea.right - workArea.left);
+    const int32_t workHeight = std::max<int32_t>(1, workArea.bottom - workArea.top);
+    const int32_t width = ClampInt(size.cx, minTrackSize.cx, workWidth);
+    const int32_t height = ClampInt(size.cy, minTrackSize.cy, workHeight);
+    const int32_t x = ClampInt(position.x, workArea.left, workArea.right - width);
+    const int32_t y = ClampInt(position.y, workArea.top, workArea.bottom - height);
+
+    return SettingsWindowPlacement{POINT{x, y}, SIZE{width, height}, workArea, dpi};
+}
+
 inline SIZE GetSettingsWindowMinTrackSize(HWND hwnd) {
     UINT dpi = USER_DEFAULT_SCREEN_DPI;
     if (hwnd) {
@@ -282,11 +308,7 @@ inline SIZE GetSettingsWindowMinTrackSize(HWND hwnd) {
     auto monitor =
         hwnd ? MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) : GetSettingsWindowTargetMonitor(std::nullopt);
     auto workArea = GetMonitorWorkArea(monitor);
-    const int32_t workWidth = std::max<int32_t>(1, workArea.right - workArea.left);
-    const int32_t workHeight = std::max<int32_t>(1, workArea.bottom - workArea.top);
-
-    return SIZE{std::min(DipToPixel(c_settingsWindowMinWidthDip, dpi), workWidth),
-                std::min(DipToPixel(c_settingsWindowMinHeightDip, dpi), workHeight)};
+    return GetSettingsWindowMinTrackSizeForWorkArea(workArea, dpi);
 }
 
 } // namespace util

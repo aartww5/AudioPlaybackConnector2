@@ -65,6 +65,42 @@ void SettingsController::SetShowNotifications(bool enabled) {
     m_settings->Save(GetModuleHandleW(nullptr));
 }
 
+bool SettingsController::SetSettingsWindowBounds(PersistedWindowBounds bounds) {
+    if (!m_settings) return false;
+
+    bool changed = false;
+    {
+        auto locked = m_settings->LockExclusiveData();
+        if (locked->SettingsWindowBounds != bounds) {
+            locked->SettingsWindowBounds = bounds;
+            changed = true;
+        }
+    }
+
+    return changed;
+}
+
+bool SettingsController::ClearSettingsWindowBounds() {
+    if (!m_settings) return false;
+
+    bool changed = false;
+    {
+        auto locked = m_settings->LockExclusiveData();
+        if (locked->SettingsWindowBounds) {
+            locked->SettingsWindowBounds.reset();
+            changed = true;
+        }
+    }
+
+    return changed;
+}
+
+void SettingsController::Save() {
+    if (m_settings) {
+        m_settings->Save(GetModuleHandleW(nullptr));
+    }
+}
+
 void SettingsController::SetDeviceAutoReconnect(std::wstring const& deviceId, bool enabled) {
     if (!m_settings) return;
 

@@ -16,7 +16,10 @@ struct SettingsWindow : SettingsWindowT<SettingsWindow> {
                                      winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
     void OpenAppInstallerButton_Click(winrt::Windows::Foundation::IInspectable const& sender,
                                       winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
+    void ResetWindowPlacementButton_Click(winrt::Windows::Foundation::IInspectable const& sender,
+                                          winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);
     void SetSettingsController(std::shared_ptr<ISettingsController> controller);
+    void SetDefaultPlacement(util::SettingsWindowPlacement placement);
     void SetTargetPlacement(util::SettingsWindowPlacement placement);
 
 private:
@@ -25,6 +28,9 @@ private:
 
     void InitializeSettingsContent();
     void RevealAtTarget(HWND hwnd);
+    void QueuePlacementSave();
+    bool StoreCurrentPlacement();
+    void ResetWindowPlacement();
     void RebuildDeviceList();
     void SetUpdateCheckBusy(bool busy);
     void ShowUpdateCheckResult(UpdateCheckResult const& result);
@@ -33,13 +39,17 @@ private:
     winrt::fire_and_forget SyncStartupTaskStateAsync();
     winrt::fire_and_forget ApplyStartWithWindowsAsync(bool on);
     winrt::fire_and_forget RunManualUpdateCheckAsync();
+    winrt::fire_and_forget SavePlacementAfterDelayAsync(uint64_t requestId);
+    util::SettingsWindowPlacement m_defaultPlacement = util::CalculateSettingsWindowPlacement();
     util::SettingsWindowPlacement m_targetPlacement = util::CalculateSettingsWindowPlacement();
+    std::atomic_uint64_t m_placementSaveRequestId = 0;
     std::atomic_uint64_t m_startupRequestId = 0;
     std::atomic_uint64_t m_updateCheckRequestId = 0;
     std::shared_ptr<ISettingsController> m_settingsController;
     bool m_suppressStartupToggle = false;
     bool m_subclassInstalled = false;
     bool m_contentInitialized = false;
+    bool m_capturePlacementChanges = false;
 };
 } // namespace winrt::AudioPlaybackConnector2::implementation
 

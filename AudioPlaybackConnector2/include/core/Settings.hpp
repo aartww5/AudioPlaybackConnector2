@@ -10,6 +10,15 @@ struct DeviceSettings {
     bool AutoReconnect = false;
 };
 
+struct PersistedWindowBounds {
+    int32_t X = 0;
+    int32_t Y = 0;
+    int32_t Width = 0;
+    int32_t Height = 0;
+
+    bool operator==(PersistedWindowBounds const&) const = default;
+};
+
 struct SettingsData {
     bool GlobalAutoReconnect = false;
     bool StartWithWindows = false;
@@ -17,6 +26,7 @@ struct SettingsData {
     std::wstring Language = L"system";
     int64_t LastUpdateCheckUnixSeconds = 0;
     std::wstring LastNotifiedUpdateVersion;
+    std::optional<PersistedWindowBounds> SettingsWindowBounds;
     std::vector<DeviceSettings> Devices;
     std::vector<std::wstring> LastConnectedIds;
 };
