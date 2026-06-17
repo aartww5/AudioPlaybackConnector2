@@ -8,8 +8,8 @@
 /*//////// Constructors / Destructor /////////////////////////////////////////////////////////////////////////*/
 /*------------------------------------------------------------------------------------------------------------*/
 
-SettingsController::SettingsController(Settings& settings, std::weak_ptr<DeviceManager> deviceManager)
-    : m_settings(&settings), m_deviceManager(std::move(deviceManager)) {}
+SettingsController::SettingsController(std::shared_ptr<Settings> settings, std::weak_ptr<DeviceManager> deviceManager)
+    : m_settings(std::move(settings)), m_deviceManager(std::move(deviceManager)) {}
 
 /*------------------------------------------------------------------------------------------------------------*/
 /*//////// Public Interface //////////////////////////////////////////////////////////////////////////////////*/

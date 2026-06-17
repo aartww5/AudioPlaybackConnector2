@@ -145,13 +145,14 @@ void TrayIcon::Initialize(HWND hwnd, UINT callbackMessage) {
     m_niid.hWnd = hwnd;
     m_niid.uID = 0;
     m_niid.guidItem = m_guid;
+    m_initialized = true;
 
     if (!Shell_NotifyIconW(NIM_ADD, &m_nid)) {
         DebugTrace(L"[TrayIcon] ERROR: Shell_NotifyIconW(NIM_ADD) failed");
         return;
     }
     Shell_NotifyIconW(NIM_SETVERSION, &m_nid);
-    m_initialized = true;
+    m_registered = true;
 }
 
 void TrayIcon::SetState(TrayIconState state) {
@@ -167,7 +168,9 @@ void TrayIcon::SetTooltip(std::wstring_view text) {
     auto guard = m_lock.lock_exclusive();
     if (!m_initialized) return;
     wcsncpy_s(m_nid.szTip, tmp.c_str(), _TRUNCATE);
-    Shell_NotifyIconW(NIM_MODIFY, &m_nid);
+    if (m_registered) {
+        Shell_NotifyIconW(NIM_MODIFY, &m_nid);
+    }
 }
 
 void TrayIcon::UpdateTheme() {
@@ -195,14 +198,22 @@ std::optional<RECT> TrayIcon::GetIconRect() const {
 void TrayIcon::Reregister() {
     auto guard = m_lock.lock_exclusive();
     if (!m_initialized) return;
-    Shell_NotifyIconW(NIM_ADD, &m_nid);
+    if (!Shell_NotifyIconW(NIM_ADD, &m_nid)) {
+        m_registered = false;
+        DebugTrace(L"[TrayIcon] ERROR: Shell_NotifyIconW(NIM_ADD) failed during reregister");
+        return;
+    }
     Shell_NotifyIconW(NIM_SETVERSION, &m_nid);
+    m_registered = true;
 }
 
 void TrayIcon::Remove() {
     auto guard = m_lock.lock_exclusive();
     if (!m_initialized) return;
-    Shell_NotifyIconW(NIM_DELETE, &m_nid);
+    if (m_registered) {
+        Shell_NotifyIconW(NIM_DELETE, &m_nid);
+    }
+    m_registered = false;
     m_initialized = false;
 }
 
@@ -286,7 +297,9 @@ void TrayIcon::RefreshIcon() {
             break;
     }
     m_nid.hIcon = hIcon;
-    Shell_NotifyIconW(NIM_MODIFY, &m_nid);
+    if (m_registered) {
+        Shell_NotifyIconW(NIM_MODIFY, &m_nid);
+    }
 }
 
 wil::unique_hicon TrayIcon::CreateIconFromImage(Gdiplus::Bitmap& source, int size, Gdiplus::Color color) {

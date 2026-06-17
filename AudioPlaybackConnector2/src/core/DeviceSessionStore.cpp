@@ -92,7 +92,9 @@ bool DeviceSessionStore::IsConnecting(winrt::hstring const& deviceId) const {
 
 std::vector<winrt::Windows::Media::Audio::AudioPlaybackConnection> DeviceSessionStore::TakeZombieConnections() {
     auto guard = m_lock.lock_exclusive();
-    return std::move(m_zombieConnections);
+    std::vector<winrt::Windows::Media::Audio::AudioPlaybackConnection> result;
+    result.swap(m_zombieConnections);
+    return result;
 }
 
 std::size_t DeviceSessionStore::ConnectionCount() const {
@@ -148,11 +150,6 @@ void DeviceSessionStore::InsertOrUpdateConnection(winrt::hstring const& deviceId
     m_connections[DeviceKey(deviceId)] = std::move(info);
 }
 
-void DeviceSessionStore::EraseConnection(winrt::hstring const& deviceId) {
-    auto guard = m_lock.lock_exclusive();
-    m_connections.erase(DeviceKey(deviceId));
-}
-
 void DeviceSessionStore::MarkDisconnecting(winrt::hstring const& deviceId) {
     auto guard = m_lock.lock_exclusive();
     m_disconnectingIds.insert(DeviceKey(deviceId));
@@ -198,11 +195,4 @@ void DeviceSessionStore::UpdateConnectionIsOpen(winrt::hstring const& deviceId, 
     auto guard = m_lock.lock_exclusive();
     auto iter = m_connections.find(DeviceKey(deviceId));
     if (iter != m_connections.end()) iter->second.IsOpen = isOpen;
-}
-
-void DeviceSessionStore::UpdateConnectionName(winrt::hstring const& deviceId, std::wstring name) {
-    auto guard = m_lock.lock_exclusive();
-    auto iter = m_connections.find(DeviceKey(deviceId));
-    if (iter == m_connections.end()) return;
-    if (!name.empty()) iter->second.Name = std::move(name);
 }

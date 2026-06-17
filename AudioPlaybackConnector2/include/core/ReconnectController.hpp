@@ -43,10 +43,11 @@ public:
     [[nodiscard]] bool HasPendingTimers() const;
 
     [[nodiscard]] ScheduleDecision PrepareSchedule(winrt::hstring const& deviceId, bool blocked);
-    void StartTimer(winrt::hstring const& deviceId);
-    [[nodiscard]] bool ShouldSkipTimer(winrt::hstring const& deviceId, bool shutdownForProcessExit) const;
-    void CompleteTimer(winrt::hstring const& deviceId);
-    void HandleTimerCreateFailed(winrt::hstring const& deviceId);
+    [[nodiscard]] std::size_t StartTimer(winrt::hstring const& deviceId);
+    [[nodiscard]] bool
+    ShouldSkipTimer(winrt::hstring const& deviceId, bool shutdownForProcessExit, std::size_t timerGeneration) const;
+    void CompleteTimer(winrt::hstring const& deviceId, std::size_t timerGeneration);
+    void HandleTimerCreateFailed(winrt::hstring const& deviceId, std::size_t timerGeneration);
 
 private:
     /*------------------------------------------------------------------------------------------------------------*/
@@ -56,5 +57,6 @@ private:
     std::unordered_set<std::wstring> m_cancelledReconnectIds;
     std::unordered_map<std::wstring, std::size_t> m_reconnectTimerCounts;
     std::unordered_map<std::wstring, std::size_t> m_reconnectAttempts;
+    std::size_t m_timerGeneration = 0;
     bool m_allReconnectsCancelled = false;
 };

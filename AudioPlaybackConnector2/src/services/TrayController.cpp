@@ -86,13 +86,8 @@ void TrayController::Teardown() noexcept {
             if (!dispatcher.HasThreadAccess()) {
                 bool enqueued = false;
                 try {
-                    auto weak = weak_from_this();
-                    if (!weak.expired()) {
-                        enqueued = dispatcher.TryEnqueue([weak]() noexcept {
-                            if (auto self = weak.lock()) {
-                                self->Teardown();
-                            }
-                        });
+                    if (auto self = weak_from_this().lock()) {
+                        enqueued = dispatcher.TryEnqueue([self = std::move(self)]() noexcept { self->Teardown(); });
                     }
                 } catch (winrt::hresult_error const& ex) {
                     util::DebugTraceException(L"[TrayController] ERROR: failed to marshal teardown to UI thread", ex);
@@ -196,7 +191,21 @@ void TrayController::ShowTrayMenu() {
     DebugTrace(L"[TrayController] ContextMenu showing at ({0}, {1}) with DPI={2}", point.X, point.Y, dpi);
 
     SetWindowPos(m_hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-    m_contextMenu->ShowAt(point);
+    auto resetTopmost = wil::scope_exit([this]() noexcept {
+        if (m_hwnd && IsWindow(m_hwnd)) {
+            SetWindowPos(m_hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        }
+    });
+    try {
+        m_contextMenu->ShowAt(point);
+        resetTopmost.release();
+    } catch (winrt::hresult_error const& ex) {
+        util::DebugTraceException(L"[TrayController] ERROR: failed to show context menu", ex);
+    } catch (std::exception const& ex) {
+        util::DebugTraceException(L"[TrayController] ERROR: failed to show context menu", ex);
+    } catch (...) {
+        util::DebugTraceUnknownException(L"[TrayController] ERROR: failed to show context menu");
+    }
 }
 
 void TrayController::ShowDevicePicker() {
@@ -278,8 +287,14 @@ void TrayController::ShowDevicePicker() {
 
     Controls::Primitives::FlyoutShowOptions options;
     options.Position(point);
+    auto resetTopmost = wil::scope_exit([this]() noexcept {
+        if (m_hwnd && IsWindow(m_hwnd)) {
+            SetWindowPos(m_hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        }
+    });
     try {
         m_pickerFlyout.ShowAt(root, options);
+        resetTopmost.release();
     } catch (winrt::hresult_error const& ex) {
         m_pickerFlyoutState.store(PickerFlyoutState::Closed);
         m_pickerFlyout = nullptr;
@@ -642,11 +657,27 @@ void TrayController::OnTrayIconDoubleClick() {
 }
 
 void TrayController::LaunchBluetoothSettings() {
-    auto op =
-        winrt::Windows::System::Launcher::LaunchUriAsync(winrt::Windows::Foundation::Uri(L"ms-settings:bluetooth"));
-    op.Completed([](auto const& sender, auto const&) {
-        if (!sender.GetResults()) {
-            DebugTrace(L"[TrayController] LaunchUriAsync(ms-settings:bluetooth) failed");
-        }
-    });
+    try {
+        auto op =
+            winrt::Windows::System::Launcher::LaunchUriAsync(winrt::Windows::Foundation::Uri(L"ms-settings:bluetooth"));
+        op.Completed([](auto const& sender, auto const&) noexcept {
+            try {
+                if (!sender.GetResults()) {
+                    DebugTrace(L"[TrayController] LaunchUriAsync(ms-settings:bluetooth) failed");
+                }
+            } catch (winrt::hresult_error const& ex) {
+                util::DebugTraceException(L"[TrayController] LaunchUriAsync(ms-settings:bluetooth) failed", ex);
+            } catch (std::exception const& ex) {
+                util::DebugTraceException(L"[TrayController] LaunchUriAsync(ms-settings:bluetooth) failed", ex);
+            } catch (...) {
+                util::DebugTraceUnknownException(L"[TrayController] LaunchUriAsync(ms-settings:bluetooth) failed");
+            }
+        });
+    } catch (winrt::hresult_error const& ex) {
+        util::DebugTraceException(L"[TrayController] LaunchUriAsync(ms-settings:bluetooth) failed", ex);
+    } catch (std::exception const& ex) {
+        util::DebugTraceException(L"[TrayController] LaunchUriAsync(ms-settings:bluetooth) failed", ex);
+    } catch (...) {
+        util::DebugTraceUnknownException(L"[TrayController] LaunchUriAsync(ms-settings:bluetooth) failed");
+    }
 }

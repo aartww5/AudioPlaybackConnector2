@@ -25,7 +25,7 @@ public:
 
 class SettingsController final : public ISettingsController {
 public:
-    SettingsController(Settings& settings, std::weak_ptr<DeviceManager> deviceManager);
+    SettingsController(std::shared_ptr<Settings> settings, std::weak_ptr<DeviceManager> deviceManager);
 
     SettingsData Snapshot() const override;
     void SetGlobalAutoReconnect(bool enabled) override;
@@ -38,6 +38,6 @@ public:
     void ForgetDevice(std::wstring const& deviceId) override;
 
 private:
-    Settings* m_settings = nullptr;
+    std::shared_ptr<Settings> m_settings;
     std::weak_ptr<DeviceManager> m_deviceManager;
 };

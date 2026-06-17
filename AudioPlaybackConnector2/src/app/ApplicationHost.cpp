@@ -156,7 +156,7 @@ void ApplicationHost::OnMainWindowLoaded(Controls::Grid const& root) {
     SetWindowSubclass(m_hwnd, SubclassProc, 1, reinterpret_cast<DWORD_PTR>(this));
     DebugTrace(L"[App] Window subclass installed");
 
-    m_settings = std::make_unique<::Settings>();
+    m_settings = std::make_shared<::Settings>();
     m_settings->Load(GetModuleHandleW(nullptr));
     DebugTrace(L"[App] Settings loaded");
 
@@ -283,7 +283,7 @@ void ApplicationHost::InitializeNotifications() {
 void ApplicationHost::InitializeDeviceManager() {
     DebugTrace(L"[App] InitializeDeviceManager()");
     m_deviceManager = std::make_shared<DeviceManager>();
-    m_settingsController = std::make_shared<SettingsController>(*m_settings, m_deviceManager);
+    m_settingsController = std::make_shared<SettingsController>(m_settings, m_deviceManager);
     auto weak = weak_from_this();
     m_deviceManager->SetAutoReconnectPredicate([weak](auto id) {
         auto self = weak.lock();
@@ -413,7 +413,7 @@ void ApplicationHost::HandlePowerResume() {
 
 winrt::fire_and_forget ApplicationHost::CheckForUpdatesOnStartupAsync() {
     auto lifetime = shared_from_this();
-    auto* settings = m_settings.get();
+    auto settings = m_settings;
     auto notificationService = m_notificationService;
     if (m_exiting.load() || !settings || !notificationService) co_return;
     co_await StartupUpdateCoordinator::CheckForUpdatesAsync(*settings, notificationService, m_exiting);

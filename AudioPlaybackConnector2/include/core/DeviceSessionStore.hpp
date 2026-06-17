@@ -53,9 +53,7 @@ public:
     void Clear();
     void SetConnectionAutoReconnect(winrt::hstring const& deviceId, bool enabled);
     void UpdateConnectionIsOpen(winrt::hstring const& deviceId, bool isOpen);
-    void UpdateConnectionName(winrt::hstring const& deviceId, std::wstring name);
     void InsertOrUpdateConnection(winrt::hstring const& deviceId, DeviceConnectionInfo info);
-    void EraseConnection(winrt::hstring const& deviceId);
     void MarkDisconnecting(winrt::hstring const& deviceId);
     void UnmarkDisconnecting(winrt::hstring const& deviceId);
     void MarkReconnecting(winrt::hstring const& deviceId);

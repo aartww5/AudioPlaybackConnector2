@@ -1,6 +1,8 @@
 #pragma once
 
 #include <memory>
+#include <cstdint>
+#include <mutex>
 #include <unordered_set>
 #include <util/Util.hpp>
 
@@ -47,9 +49,11 @@ private:
     /*//////// Private Implementation ////////////////////////////////////////////////////////////////////////////*/
     /*------------------------------------------------------------------------------------------------------------*/
 
-    void OnDeviceAdded(winrt::Windows::Devices::Enumeration::DeviceWatcher const& sender,
+    void OnDeviceAdded(std::uint64_t watcherGeneration,
+                       winrt::Windows::Devices::Enumeration::DeviceWatcher const& sender,
                        winrt::Windows::Devices::Enumeration::DeviceInformation const& args);
-    void OnDeviceRemoved(winrt::Windows::Devices::Enumeration::DeviceWatcher const& sender,
+    void OnDeviceRemoved(std::uint64_t watcherGeneration,
+                         winrt::Windows::Devices::Enumeration::DeviceWatcher const& sender,
                          winrt::Windows::Devices::Enumeration::DeviceInformationUpdate const& args);
 
     /*------------------------------------------------------------------------------------------------------------*/
@@ -57,9 +61,11 @@ private:
     /*------------------------------------------------------------------------------------------------------------*/
 
     mutable wil::srwlock m_lock;
+    std::mutex m_watcherLifecycleMutex;
     std::unordered_set<std::wstring> m_deviceCache;
     winrt::Windows::Devices::Enumeration::DeviceWatcher m_watcher{nullptr};
     winrt::event_token m_watcherAddedToken{};
     winrt::event_token m_watcherRemovedToken{};
+    std::uint64_t m_watcherGeneration = 0;
     bool m_watcherStopping = false;
 };

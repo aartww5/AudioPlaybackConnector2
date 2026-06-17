@@ -277,6 +277,15 @@ bool NotificationService::IsStatusNotificationGenerationCurrent(uint64_t generat
     return !m_isTearingDown && generation == m_statusNotificationGeneration;
 }
 
+bool NotificationService::ShouldShowNotifications() const {
+    ShouldShowNotificationCallback callback;
+    {
+        auto guard = m_lock.lock_shared();
+        callback = m_shouldShowNotificationCallback;
+    }
+    return !callback || callback();
+}
+
 winrt::fire_and_forget NotificationService::ShowToastAsync(std::wstring xml,
                                                            winrt::hstring group,
                                                            winrt::hstring tag,
@@ -335,10 +344,7 @@ void NotificationService::ShowStatusToast(std::wstring const& xml,
 /*------------------------------------------------------------------------------------------------------------*/
 
 void NotificationService::ShowAppStarted() {
-    {
-        auto guard = m_lock.lock_shared();
-        if (m_shouldShowNotificationCallback && !m_shouldShowNotificationCallback()) return;
-    }
+    if (!ShouldShowNotifications()) return;
     auto title = NotificationText("Notification_AppStarted_Title");
     auto body = NotificationText("Notification_AppStarted_Body");
     auto xml =
@@ -347,10 +353,7 @@ void NotificationService::ShowAppStarted() {
 }
 
 void NotificationService::ShowDeviceConnected(winrt::hstring const& id, winrt::hstring const& deviceName) {
-    {
-        auto guard = m_lock.lock_shared();
-        if (m_shouldShowNotificationCallback && !m_shouldShowNotificationCallback()) return;
-    }
+    if (!ShouldShowNotifications()) return;
     auto title = NotificationText("Notification_Connected", deviceName);
     auto xml = BuildToastXml(title,
                              L"",
@@ -365,10 +368,7 @@ void NotificationService::ShowDeviceConnected(winrt::hstring const& id, winrt::h
 }
 
 void NotificationService::ShowDeviceDisconnected(winrt::hstring const&, winrt::hstring const& deviceName) {
-    {
-        auto guard = m_lock.lock_shared();
-        if (m_shouldShowNotificationCallback && !m_shouldShowNotificationCallback()) return;
-    }
+    if (!ShouldShowNotifications()) return;
     auto title = NotificationText("Notification_Disconnected", deviceName);
     auto xml = BuildToastXml(title,
                              NotificationText("Notification_Disconnected_Body"),
@@ -382,10 +382,7 @@ void NotificationService::ShowDeviceDisconnected(winrt::hstring const&, winrt::h
 }
 
 void NotificationService::ShowAutoReconnect(winrt::hstring const&, winrt::hstring const& deviceName) {
-    {
-        auto guard = m_lock.lock_shared();
-        if (m_shouldShowNotificationCallback && !m_shouldShowNotificationCallback()) return;
-    }
+    if (!ShouldShowNotifications()) return;
     auto title = NotificationText("Notification_AutoReconnect", deviceName);
     auto xml = BuildToastXml(title,
                              NotificationText("Notification_AutoReconnect_Body"),
@@ -399,10 +396,7 @@ void NotificationService::ShowAutoReconnect(winrt::hstring const&, winrt::hstrin
 }
 
 void NotificationService::ShowAutoReconnectFailed(winrt::hstring const& id, winrt::hstring const& deviceName) {
-    {
-        auto guard = m_lock.lock_shared();
-        if (m_shouldShowNotificationCallback && !m_shouldShowNotificationCallback()) return;
-    }
+    if (!ShouldShowNotifications()) return;
     auto title = NotificationText("Notification_AutoReconnectFailed_Title", deviceName);
     auto xml = BuildToastXml(title,
                              NotificationText("Notification_AutoReconnectFailed_Body"),
@@ -416,10 +410,7 @@ void NotificationService::ShowAutoReconnectFailed(winrt::hstring const& id, winr
 }
 
 void NotificationService::ShowUpdateAvailable(std::wstring const& latestVersion) {
-    {
-        auto guard = m_lock.lock_shared();
-        if (m_shouldShowNotificationCallback && !m_shouldShowNotificationCallback()) return;
-    }
+    if (!ShouldShowNotifications()) return;
     auto title = NotificationText("Notification_UpdateAvailable_Title", latestVersion);
     auto body = NotificationText("Notification_UpdateAvailable_Body");
     auto xml = BuildToastXml(title,

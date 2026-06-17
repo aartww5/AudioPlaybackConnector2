@@ -5,6 +5,7 @@
 #include <core/ReconnectController.hpp>
 #include <chrono>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -118,5 +119,6 @@ private:
     std::shared_ptr<DeviceDiscoveryService> m_discoveryService;
     std::size_t m_discoveryDeviceAddedToken = 0;
     std::size_t m_discoveryDeviceRemovedToken = 0;
+    mutable std::mutex m_heartbeatTimerMutex;
     winrt::Windows::System::Threading::ThreadPoolTimer m_heartbeatTimer{nullptr};
 };

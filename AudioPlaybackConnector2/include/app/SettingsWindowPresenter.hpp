@@ -16,6 +16,8 @@ public:
     /*//////// Public Interface //////////////////////////////////////////////////////////////////////////////////*/
     /*------------------------------------------------------------------------------------------------------------*/
 
+    ~SettingsWindowPresenter();
+
     void Show(std::shared_ptr<ISettingsController> settingsController,
               std::shared_ptr<TrayController> trayController,
               std::function<void()> saveSettings);
@@ -26,5 +28,11 @@ private:
     /*//////// Member Variables //////////////////////////////////////////////////////////////////////////////////*/
     /*------------------------------------------------------------------------------------------------------------*/
 
+    void HandleWindowClosed() noexcept;
+    void RevokeWindowClosedHandler() noexcept;
+
     winrt::Microsoft::UI::Xaml::Window m_settingsWindow{nullptr};
+    winrt::event_token m_settingsWindowClosedToken{};
+    std::function<void()> m_saveSettingsOnClose;
+    bool m_settingsWindowClosedTokenRegistered = false;
 };

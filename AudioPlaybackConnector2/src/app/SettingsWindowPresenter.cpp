@@ -10,6 +10,10 @@
 /*//////// Public Interface //////////////////////////////////////////////////////////////////////////////////*/
 /*------------------------------------------------------------------------------------------------------------*/
 
+SettingsWindowPresenter::~SettingsWindowPresenter() {
+    Close();
+}
+
 void SettingsWindowPresenter::Show(std::shared_ptr<ISettingsController> settingsController,
                                    std::shared_ptr<TrayController> trayController,
                                    std::function<void()> saveSettings) {
@@ -59,13 +63,9 @@ void SettingsWindowPresenter::Show(std::shared_ptr<ISettingsController> settings
 
         m_settingsWindow.Activate();
 
-        m_settingsWindow.Closed([this, saveSettings = std::move(saveSettings)](auto&, auto&) mutable {
-            DebugTrace(L"[SettingsWindowPresenter] SettingsWindow closed");
-            m_settingsWindow = nullptr;
-            if (saveSettings) {
-                saveSettings();
-            }
-        });
+        m_saveSettingsOnClose = std::move(saveSettings);
+        m_settingsWindowClosedToken = m_settingsWindow.Closed([this](auto&, auto&) { HandleWindowClosed(); });
+        m_settingsWindowClosedTokenRegistered = true;
         DebugTrace(L"[SettingsWindowPresenter] SettingsWindow created off-screen (hidden until ready)");
     } catch (winrt::hresult_error const& ex) {
         DebugTrace(L"[SettingsWindowPresenter] ERROR: Failed to create SettingsWindow: 0x{0:08X} {1}",
@@ -85,9 +85,41 @@ void SettingsWindowPresenter::Show(std::shared_ptr<ISettingsController> settings
 void SettingsWindowPresenter::Close() noexcept {
     if (!m_settingsWindow) return;
 
+    auto window = m_settingsWindow;
     try {
-        m_settingsWindow.Close();
+        window.Close();
     } catch (...) {
     }
+    if (m_settingsWindow) {
+        HandleWindowClosed();
+    }
+}
+
+void SettingsWindowPresenter::HandleWindowClosed() noexcept {
+    DebugTrace(L"[SettingsWindowPresenter] SettingsWindow closed");
+    RevokeWindowClosedHandler();
     m_settingsWindow = nullptr;
+    if (m_saveSettingsOnClose) {
+        try {
+            m_saveSettingsOnClose();
+        } catch (winrt::hresult_error const& ex) {
+            util::DebugTraceException(L"[SettingsWindowPresenter] ERROR: failed to save settings on close", ex);
+        } catch (std::exception const& ex) {
+            util::DebugTraceException(L"[SettingsWindowPresenter] ERROR: failed to save settings on close", ex);
+        } catch (...) {
+            util::DebugTraceUnknownException(L"[SettingsWindowPresenter] ERROR: failed to save settings on close");
+        }
+    }
+    m_saveSettingsOnClose = nullptr;
+}
+
+void SettingsWindowPresenter::RevokeWindowClosedHandler() noexcept {
+    if (!m_settingsWindow || !m_settingsWindowClosedTokenRegistered) return;
+
+    try {
+        m_settingsWindow.Closed(m_settingsWindowClosedToken);
+    } catch (...) {
+    }
+    m_settingsWindowClosedToken = {};
+    m_settingsWindowClosedTokenRegistered = false;
 }

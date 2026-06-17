@@ -34,13 +34,16 @@ void ReconnectController::AllowReconnects() {
 }
 
 void ReconnectController::CancelPendingReconnects() {
+    ++m_timerGeneration;
     m_allReconnectsCancelled = true;
     m_reconnectAttempts.clear();
     m_cancelledReconnectIds.clear();
+    m_reconnectTimerCounts.clear();
     DebugTrace(L"[ReconnectController] Pending reconnects cancelled");
 }
 
 void ReconnectController::ClearTracking() {
+    ++m_timerGeneration;
     m_reconnectAttempts.clear();
     m_cancelledReconnectIds.clear();
     m_reconnectTimerCounts.clear();
@@ -124,17 +127,23 @@ ReconnectController::ScheduleDecision ReconnectController::PrepareSchedule(winrt
     return decision;
 }
 
-void ReconnectController::StartTimer(winrt::hstring const& deviceId) {
+std::size_t ReconnectController::StartTimer(winrt::hstring const& deviceId) {
     const auto key = DeviceKey(deviceId);
     m_cancelledReconnectIds.erase(key);
     ++m_reconnectTimerCounts[key];
+    return m_timerGeneration;
 }
 
-bool ReconnectController::ShouldSkipTimer(winrt::hstring const& deviceId, bool shutdownForProcessExit) const {
-    return shutdownForProcessExit || m_allReconnectsCancelled || m_cancelledReconnectIds.count(DeviceKey(deviceId)) > 0;
+bool ReconnectController::ShouldSkipTimer(winrt::hstring const& deviceId,
+                                          bool shutdownForProcessExit,
+                                          std::size_t timerGeneration) const {
+    return shutdownForProcessExit || m_allReconnectsCancelled || timerGeneration != m_timerGeneration ||
+           m_cancelledReconnectIds.count(DeviceKey(deviceId)) > 0;
 }
 
-void ReconnectController::CompleteTimer(winrt::hstring const& deviceId) {
+void ReconnectController::CompleteTimer(winrt::hstring const& deviceId, std::size_t timerGeneration) {
+    if (timerGeneration != m_timerGeneration) return;
+
     const auto key = DeviceKey(deviceId);
     auto iter = m_reconnectTimerCounts.find(key);
     if (iter == m_reconnectTimerCounts.end()) return;
@@ -147,7 +156,9 @@ void ReconnectController::CompleteTimer(winrt::hstring const& deviceId) {
     }
 }
 
-void ReconnectController::HandleTimerCreateFailed(winrt::hstring const& deviceId) {
+void ReconnectController::HandleTimerCreateFailed(winrt::hstring const& deviceId, std::size_t timerGeneration) {
+    if (timerGeneration != m_timerGeneration) return;
+
     auto iter = m_reconnectTimerCounts.find(DeviceKey(deviceId));
     if (iter == m_reconnectTimerCounts.end()) return;
 

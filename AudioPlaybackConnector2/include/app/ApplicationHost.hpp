@@ -89,7 +89,7 @@ private:
     winrt::Microsoft::UI::Xaml::Window m_mainWindow{nullptr};
     HWND m_hwnd = nullptr;
 
-    std::unique_ptr<::Settings> m_settings;
+    std::shared_ptr<::Settings> m_settings;
     std::shared_ptr<::DeviceManager> m_deviceManager;
     std::shared_ptr<ISettingsController> m_settingsController;
     winrt::Microsoft::UI::Dispatching::DispatcherQueue m_dispatcherQueue{nullptr};

@@ -2,6 +2,7 @@
 #include <core/DeviceManager.hpp>
 #include <core/AudioConnectionService.hpp>
 #include <core/StringResources.hpp>
+#include <thread>
 #include <utility>
 
 namespace {
@@ -62,6 +63,46 @@ std::wstring_view OpenResultStatusName(winrt::Windows::Media::Audio::AudioPlayba
         case winrt::Windows::Media::Audio::AudioPlaybackConnectionOpenResultStatus::UnknownFailure:
             return L"UnknownFailure";
         default: return L"UnknownStatus";
+    }
+}
+
+void CloseConnectionsOnBackgroundThread(std::vector<winrt::Windows::Media::Audio::AudioPlaybackConnection> connections,
+                                        std::wstring_view context) noexcept {
+    if (connections.empty()) return;
+
+    auto sharedConnections =
+        std::make_shared<std::vector<winrt::Windows::Media::Audio::AudioPlaybackConnection>>(std::move(connections));
+    auto closeConnections = [](std::shared_ptr<std::vector<winrt::Windows::Media::Audio::AudioPlaybackConnection>>
+                                   connectionsToClose) noexcept {
+        for (auto& connection : *connectionsToClose) {
+            AudioConnectionService::Close(connection);
+        }
+    };
+
+    try {
+        (void)winrt::Windows::System::Threading::ThreadPool::RunAsync(
+            [sharedConnections, closeConnections](winrt::Windows::Foundation::IAsyncAction) mutable noexcept {
+                closeConnections(std::move(sharedConnections));
+            });
+        return;
+    } catch (winrt::hresult_error const& ex) {
+        util::DebugTraceException(std::format(L"[DeviceManager] {0} scheduling failed", context), ex);
+    } catch (std::exception const& ex) {
+        util::DebugTraceException(std::format(L"[DeviceManager] {0} scheduling failed", context), ex);
+    } catch (...) {
+        util::DebugTraceUnknownException(std::format(L"[DeviceManager] {0} scheduling failed", context));
+    }
+
+    try {
+        std::thread([sharedConnections = std::move(sharedConnections), closeConnections]() mutable noexcept {
+            closeConnections(std::move(sharedConnections));
+        }).detach();
+    } catch (std::exception const& ex) {
+        util::DebugTraceException(std::format(L"[DeviceManager] {0} std::thread fallback failed", context), ex);
+        closeConnections(std::move(sharedConnections));
+    } catch (...) {
+        util::DebugTraceUnknownException(std::format(L"[DeviceManager] {0} std::thread fallback failed", context));
+        closeConnections(std::move(sharedConnections));
     }
 }
 
@@ -169,6 +210,9 @@ void DeviceManager::SuspendForPowerTransition() noexcept {
             auto guard = m_lock.lock_exclusive();
             if (m_shutdownForProcessExit) return;
             m_powerTransitionSuspended = true;
+            for (auto& entry : m_connectAttemptIds) {
+                ++entry.second;
+            }
             auto allConnections = m_sessions.ExtractAllConnections();
             auto zombies = m_sessions.TakeZombieConnections();
             connections.reserve(allConnections.size() + zombies.size());
@@ -203,20 +247,7 @@ void DeviceManager::SuspendForPowerTransition() noexcept {
                 }
             }
 
-            try {
-                (void)winrt::Windows::System::Threading::ThreadPool::RunAsync(
-                    [connections = std::move(closeConnections)](winrt::Windows::Foundation::IAsyncAction) mutable {
-                        for (auto& connection : connections) {
-                            AudioConnectionService::Close(connection);
-                        }
-                    });
-            } catch (winrt::hresult_error const& ex) {
-                util::DebugTraceException(L"[DeviceManager] Power transition cleanup scheduling failed", ex);
-            } catch (std::exception const& ex) {
-                util::DebugTraceException(L"[DeviceManager] Power transition cleanup scheduling failed", ex);
-            } catch (...) {
-                util::DebugTraceUnknownException(L"[DeviceManager] Power transition cleanup scheduling failed");
-            }
+            CloseConnectionsOnBackgroundThread(std::move(closeConnections), L"Power transition cleanup");
         }
 
         LogConnectionSnapshot(L"power-suspend");
@@ -288,7 +319,7 @@ winrt::Windows::Foundation::IAsyncAction DeviceManager::ConnectAsync(winrt::hstr
         auto devices = co_await m_discoveryService->RefreshAsync();
         {
             auto guard = m_lock.lock_exclusive();
-            if (m_shutdownForProcessExit) {
+            if (m_shutdownForProcessExit || m_powerTransitionSuspended) {
                 m_sessions.UnmarkConnecting(deviceId);
                 co_return;
             }
@@ -601,22 +632,33 @@ bool DeviceManager::IsDeviceBusy(winrt::hstring const& deviceId) const {
 }
 
 void DeviceManager::StartConnectionHeartbeat() {
-    if (m_heartbeatTimer) return;
+    bool started = false;
+    {
+        std::lock_guard lock(m_heartbeatTimerMutex);
+        if (m_heartbeatTimer) return;
 
-    auto weak = weak_from_this();
-    m_heartbeatTimer = winrt::Windows::System::Threading::ThreadPoolTimer::CreatePeriodicTimer(
-        [weak](auto) {
-            if (auto self = weak.lock()) {
-                self->LogConnectionSnapshot(L"heartbeat");
-            }
-        },
-        std::chrono::minutes(c_heartbeatIntervalMinutes));
+        auto weak = weak_from_this();
+        m_heartbeatTimer = winrt::Windows::System::Threading::ThreadPoolTimer::CreatePeriodicTimer(
+            [weak](auto) {
+                if (auto self = weak.lock()) {
+                    self->LogConnectionSnapshot(L"heartbeat");
+                }
+            },
+            std::chrono::minutes(c_heartbeatIntervalMinutes));
+        started = true;
+    }
 
-    LogConnectionSnapshot(L"heartbeat-started");
+    if (started) {
+        LogConnectionSnapshot(L"heartbeat-started");
+    }
 }
 
 void DeviceManager::StopConnectionHeartbeat() {
-    auto timer = std::exchange(m_heartbeatTimer, nullptr);
+    winrt::Windows::System::Threading::ThreadPoolTimer timer{nullptr};
+    {
+        std::lock_guard lock(m_heartbeatTimerMutex);
+        timer = std::exchange(m_heartbeatTimer, nullptr);
+    }
     if (timer) {
         try {
             timer.Cancel();
@@ -823,20 +865,7 @@ void DeviceManager::Disconnect(winrt::hstring deviceId, DisconnectReason reason,
                 AudioConnectionService::DetachForProcessExit(z);
             }
         } else {
-            try {
-                (void)winrt::Windows::System::Threading::ThreadPool::RunAsync(
-                    [zombies = std::move(zombies)](winrt::Windows::Foundation::IAsyncAction) mutable {
-                        for (auto& z : zombies) {
-                            AudioConnectionService::Close(z);
-                        }
-                    });
-            } catch (winrt::hresult_error const& ex) {
-                util::DebugTraceException(L"[DeviceManager] Disconnect cleanup scheduling failed", ex);
-            } catch (std::exception const& ex) {
-                util::DebugTraceException(L"[DeviceManager] Disconnect cleanup scheduling failed", ex);
-            } catch (...) {
-                util::DebugTraceUnknownException(L"[DeviceManager] Disconnect cleanup scheduling failed");
-            }
+            CloseConnectionsOnBackgroundThread(std::move(zombies), L"Disconnect cleanup");
         }
     }
 
@@ -882,7 +911,7 @@ DeviceManager::ConnectInternalAsync(winrt::Windows::Devices::Enumeration::Device
     try {
         {
             auto guard = m_lock.lock_shared();
-            if (m_shutdownForProcessExit) co_return;
+            if (m_shutdownForProcessExit || m_powerTransitionSuspended) co_return;
         }
 
         auto connection = AudioConnectionService::TryCreateFromId(deviceId);
@@ -934,8 +963,8 @@ DeviceManager::ConnectInternalAsync(winrt::Windows::Devices::Enumeration::Device
             auto guard = m_lock.lock_exclusive();
             auto attempt = m_connectAttemptIds.find(deviceIdKey);
             shutdownForProcessExit = m_shutdownForProcessExit;
-            if (shutdownForProcessExit || attempt == m_connectAttemptIds.end() || attempt->second != attemptId ||
-                m_sessions.HasConnection(deviceId)) {
+            if (shutdownForProcessExit || m_powerTransitionSuspended || attempt == m_connectAttemptIds.end() ||
+                attempt->second != attemptId || m_sessions.HasConnection(deviceId)) {
                 duplicateConnection = true;
             } else {
                 m_sessions.InsertOrUpdateConnection(deviceId, std::move(info));
@@ -957,7 +986,7 @@ DeviceManager::ConnectInternalAsync(winrt::Windows::Devices::Enumeration::Device
         bool isReconnecting = false;
         {
             auto guard = m_lock.lock_shared();
-            if (m_shutdownForProcessExit) co_return;
+            if (m_shutdownForProcessExit || m_powerTransitionSuspended) co_return;
             isReconnecting = m_sessions.IsReconnecting(deviceId);
         }
 
@@ -984,8 +1013,9 @@ DeviceManager::ConnectInternalAsync(winrt::Windows::Devices::Enumeration::Device
         {
             auto guard = m_lock.lock_exclusive();
             auto attempt = m_connectAttemptIds.find(deviceIdKey);
-            currentAttempt = !m_shutdownForProcessExit && attempt != m_connectAttemptIds.end() &&
-                             attempt->second == attemptId && m_sessions.HasConnection(deviceId);
+            currentAttempt = !m_shutdownForProcessExit && !m_powerTransitionSuspended &&
+                             attempt != m_connectAttemptIds.end() && attempt->second == attemptId &&
+                             m_sessions.HasConnection(deviceId);
         }
         if (!currentAttempt) co_return;
 
@@ -995,8 +1025,8 @@ DeviceManager::ConnectInternalAsync(winrt::Windows::Devices::Enumeration::Device
                     auto guard = m_lock.lock_exclusive();
                     auto existingInfo = m_sessions.FindConnection(deviceId);
                     auto attempt = m_connectAttemptIds.find(deviceIdKey);
-                    if (m_shutdownForProcessExit || !existingInfo || attempt == m_connectAttemptIds.end() ||
-                        attempt->second != attemptId)
+                    if (m_shutdownForProcessExit || m_powerTransitionSuspended || !existingInfo ||
+                        attempt == m_connectAttemptIds.end() || attempt->second != attemptId)
                         co_return;
                     m_sessions.UpdateConnectionIsOpen(deviceId, true);
                     m_sessions.UnmarkReconnecting(deviceId);
@@ -1040,7 +1070,7 @@ DeviceManager::ConnectInternalAsync(winrt::Windows::Devices::Enumeration::Device
 
 bool DeviceManager::IsConnectAttemptCurrent(winrt::hstring const& deviceId, std::size_t attemptId) const {
     auto guard = m_lock.lock_shared();
-    if (m_shutdownForProcessExit) return false;
+    if (m_shutdownForProcessExit || m_powerTransitionSuspended) return false;
     const std::wstring deviceIdKey = std::wstring(deviceId);
     auto attempt = m_connectAttemptIds.find(deviceIdKey);
     return attempt != m_connectAttemptIds.end() && attempt->second == attemptId;
@@ -1250,6 +1280,7 @@ void DeviceManager::OnConnectionStateChanged(winrt::hstring deviceId,
 }
 
 void DeviceManager::ScheduleReconnect(winrt::hstring deviceId) {
+    std::size_t timerGeneration = 0;
     try {
         ReconnectController::ScheduleDecision decision;
         {
@@ -1282,26 +1313,27 @@ void DeviceManager::ScheduleReconnect(winrt::hstring deviceId) {
         // already read the marker as cancelled (it was inserted first).
         {
             auto guard = m_lock.lock_exclusive();
-            m_reconnectController.StartTimer(deviceId);
+            timerGeneration = m_reconnectController.StartTimer(deviceId);
         }
         auto weak = weak_from_this();
         (void)winrt::Windows::System::Threading::ThreadPoolTimer::CreateTimer(
-            [weak, deviceId](auto) {
+            [weak, deviceId, timerGeneration](auto) {
                 if (auto self = weak.lock()) {
                     bool cancelled = false;
                     {
                         auto guard = self->m_lock.lock_shared();
-                        cancelled =
-                            self->m_reconnectController.ShouldSkipTimer(deviceId, self->m_shutdownForProcessExit) ||
-                            self->m_sessions.HasConnection(deviceId) || self->m_sessions.IsConnecting(deviceId) ||
-                            self->m_sessions.IsReconnecting(deviceId);
+                        cancelled = self->m_reconnectController.ShouldSkipTimer(
+                                        deviceId, self->m_shutdownForProcessExit, timerGeneration) ||
+                                    self->m_sessions.HasConnection(deviceId) ||
+                                    self->m_sessions.IsConnecting(deviceId) ||
+                                    self->m_sessions.IsReconnecting(deviceId);
                     }
                     if (!cancelled) {
                         self->ConnectDetached(deviceId);
                     }
                     {
                         auto guard = self->m_lock.lock_exclusive();
-                        self->m_reconnectController.CompleteTimer(deviceId);
+                        self->m_reconnectController.CompleteTimer(deviceId, timerGeneration);
                     }
                     self->DeviceActivityChanged(deviceId);
                 }
@@ -1309,15 +1341,15 @@ void DeviceManager::ScheduleReconnect(winrt::hstring deviceId) {
             decision.Delay);
     } catch (winrt::hresult_error const& ex) {
         auto guard = m_lock.lock_exclusive();
-        m_reconnectController.HandleTimerCreateFailed(deviceId);
+        m_reconnectController.HandleTimerCreateFailed(deviceId, timerGeneration);
         util::DebugTraceException(L"[DeviceManager] ScheduleReconnect ERROR: failed to create reconnect timer", ex);
     } catch (std::exception const& ex) {
         auto guard = m_lock.lock_exclusive();
-        m_reconnectController.HandleTimerCreateFailed(deviceId);
+        m_reconnectController.HandleTimerCreateFailed(deviceId, timerGeneration);
         util::DebugTraceException(L"[DeviceManager] ScheduleReconnect ERROR: failed to create reconnect timer", ex);
     } catch (...) {
         auto guard = m_lock.lock_exclusive();
-        m_reconnectController.HandleTimerCreateFailed(deviceId);
+        m_reconnectController.HandleTimerCreateFailed(deviceId, timerGeneration);
         util::DebugTraceUnknownException(L"[DeviceManager] ScheduleReconnect ERROR: failed to create reconnect timer");
     }
 }
