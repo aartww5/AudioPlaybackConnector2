@@ -12,9 +12,18 @@ struct IconButtonOptions {
     bool Borderless = true;
 };
 
+inline void SetTooltipText(winrt::Microsoft::UI::Xaml::DependencyObject const& element, winrt::hstring const& text) {
+    winrt::Microsoft::UI::Xaml::Controls::ToolTipService::SetToolTip(element, winrt::box_value(text));
+}
+
+inline void SetAccessibleLabel(winrt::Microsoft::UI::Xaml::DependencyObject const& element,
+                               winrt::hstring const& text) {
+    SetTooltipText(element, text);
+    winrt::Microsoft::UI::Xaml::Automation::AutomationProperties::SetName(element, text);
+}
+
 inline void SetButtonLabel(winrt::Microsoft::UI::Xaml::Controls::Button const& button, winrt::hstring const& text) {
-    winrt::Microsoft::UI::Xaml::Controls::ToolTipService::SetToolTip(button, winrt::box_value(text));
-    winrt::Microsoft::UI::Xaml::Automation::AutomationProperties::SetName(button, text);
+    SetAccessibleLabel(button, text);
 }
 
 inline void SetButtonLabel(winrt::Microsoft::UI::Xaml::Controls::Button const& button,
@@ -33,6 +42,20 @@ inline winrt::Microsoft::UI::Xaml::Controls::FontIcon CreateFontIcon(
         icon.Foreground(foreground);
     }
     return icon;
+}
+
+inline winrt::Microsoft::UI::Xaml::Media::Brush TryThemeBrush(std::wstring_view resourceKey) {
+    auto resource = winrt::Microsoft::UI::Xaml::Application::Current().Resources().TryLookup(
+        winrt::box_value(winrt::hstring(resourceKey)));
+    return resource ? resource.try_as<winrt::Microsoft::UI::Xaml::Media::Brush>() : nullptr;
+}
+
+inline winrt::Microsoft::UI::Xaml::Media::Brush ThemeBrushOrFallback(std::wstring_view resourceKey,
+                                                                     winrt::Windows::UI::Color fallbackColor) {
+    if (auto brush = TryThemeBrush(resourceKey)) {
+        return brush;
+    }
+    return winrt::Microsoft::UI::Xaml::Media::SolidColorBrush(fallbackColor);
 }
 
 inline winrt::Microsoft::UI::Xaml::Controls::StackPanel CreateIconTextContent(std::wstring_view glyph,

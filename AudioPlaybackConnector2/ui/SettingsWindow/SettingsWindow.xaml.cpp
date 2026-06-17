@@ -467,11 +467,8 @@ void SettingsWindow::RebuildDeviceList() {
     auto controller = m_settingsController;
     if (!controller) return;
 
-    auto secondaryBrush = [&]() -> winrt::Microsoft::UI::Xaml::Media::Brush {
-        auto brush = Application::Current().Resources().TryLookup(box_value(L"TextFillColorSecondaryBrush"));
-        if (brush) return brush.as<winrt::Microsoft::UI::Xaml::Media::Brush>();
-        return winrt::Microsoft::UI::Xaml::Media::SolidColorBrush(winrt::Windows::UI::Colors::Gray());
-    }();
+    auto secondaryBrush =
+        apc::ui::ThemeBrushOrFallback(L"TextFillColorSecondaryBrush", winrt::Windows::UI::Colors::Gray());
 
     // Snapshot settings through the controller, then build UI without holding any settings lock.
     auto snapshot = controller->Snapshot();
@@ -506,7 +503,7 @@ void SettingsWindow::RebuildDeviceList() {
         name.TextWrapping(TextWrapping::Wrap);
         name.TextTrimming(TextTrimming::CharacterEllipsis);
         name.MaxLines(2);
-        ToolTipService::SetToolTip(name, box_value(dev.DisplayName));
+        apc::ui::SetTooltipText(name, winrt::hstring(dev.DisplayName));
         namePanel.Children().Append(name);
 
         auto subtitle = TextBlock();
@@ -530,9 +527,9 @@ void SettingsWindow::RebuildDeviceList() {
         toggle.OffContent(box_value(L""));
         toggle.OnContent(box_value(L""));
         if (globalAutoReconnect) {
-            ToolTipService::SetToolTip(toggle, box_value(winrt::hstring(_("Device_AutoReconnect_Global"))));
+            apc::ui::SetTooltipText(toggle, winrt::hstring(_("Device_AutoReconnect_Global")));
         } else {
-            ToolTipService::SetToolTip(toggle, box_value(winrt::hstring(_("Device_AutoReconnect"))));
+            apc::ui::SetTooltipText(toggle, winrt::hstring(_("Device_AutoReconnect")));
         }
         auto weak = get_weak();
         toggle.Toggled([id = dev.Id, weak](auto const& s, auto) {

@@ -133,16 +133,13 @@ void DevicePickerView::Initialize(std::shared_ptr<DeviceManager> manager,
     m_onReconnectAll = std::move(onReconnectAll);
     TitleText().Text(winrt::hstring(_("TrayMenu_SelectDevice")));
     auto closeText = winrt::hstring(_("Close"));
-    ToolTipService::SetToolTip(CloseButton(), box_value(closeText));
-    winrt::Microsoft::UI::Xaml::Automation::AutomationProperties::SetName(CloseButton(), closeText);
+    apc::ui::SetButtonLabel(CloseButton(), closeText);
     auto disconnectAllText = winrt::hstring(_("DisconnectAll"));
     auto reconnectAllText = winrt::hstring(_("ReconnectAll"));
     DisconnectAllText().Text(disconnectAllText);
     ReconnectAllText().Text(reconnectAllText);
-    ToolTipService::SetToolTip(DisconnectAllButton(), box_value(disconnectAllText));
-    ToolTipService::SetToolTip(ReconnectAllButton(), box_value(reconnectAllText));
-    winrt::Microsoft::UI::Xaml::Automation::AutomationProperties::SetName(DisconnectAllButton(), disconnectAllText);
-    winrt::Microsoft::UI::Xaml::Automation::AutomationProperties::SetName(ReconnectAllButton(), reconnectAllText);
+    apc::ui::SetButtonLabel(DisconnectAllButton(), disconnectAllText);
+    apc::ui::SetButtonLabel(ReconnectAllButton(), reconnectAllText);
 }
 
 void DevicePickerView::LoadDevices() {
@@ -349,12 +346,8 @@ void DevicePickerView::RebuildDeviceListFromCache(bool reconcilePendingActions) 
     if (m_viewModel.Empty()) {
         auto emptyMsg = TextBlock();
         emptyMsg.Text(winrt::hstring(_("TrayMenu_NoDevices")));
-        auto brush = Application::Current().Resources().TryLookup(box_value(L"TextFillColorSecondaryBrush"));
-        if (brush) {
-            emptyMsg.Foreground(brush.as<Media::SolidColorBrush>());
-        } else {
-            emptyMsg.Foreground(Media::SolidColorBrush(winrt::Windows::UI::Colors::Gray()));
-        }
+        emptyMsg.Foreground(
+            apc::ui::ThemeBrushOrFallback(L"TextFillColorSecondaryBrush", winrt::Windows::UI::Colors::Gray()));
         DeviceList().Items().Append(emptyMsg);
     } else {
         for (auto const& device : items) {
@@ -385,7 +378,7 @@ ListViewItem DevicePickerView::BuildDeviceListItem(DevicePickerItemViewModel con
     nameTb.TextTrimming(TextTrimming::CharacterEllipsis);
     nameTb.TextWrapping(TextWrapping::NoWrap);
     nameTb.MaxLines(1);
-    ToolTipService::SetToolTip(nameTb, box_value(device.Name));
+    apc::ui::SetTooltipText(nameTb, device.Name);
     Grid::SetColumn(nameTb, 0);
 
     auto infoPanel = StackPanel();
@@ -410,12 +403,8 @@ ListViewItem DevicePickerView::BuildDeviceListItem(DevicePickerItemViewModel con
     if (device.IsConnected) {
         auto devId = device.Id;
 
-        winrt::Microsoft::UI::Xaml::Media::Brush reconnectBrush{nullptr};
-        if (auto brush = Application::Current().Resources().TryLookup(box_value(L"AccentFillColorDefaultBrush"))) {
-            reconnectBrush = brush.as<Media::Brush>();
-        }
         apc::ui::IconButtonOptions reconnectOptions;
-        reconnectOptions.Foreground = reconnectBrush;
+        reconnectOptions.Foreground = apc::ui::TryThemeBrush(L"AccentFillColorDefaultBrush");
         auto reconnectBtn = apc::ui::CreateIconButton(L"\xE72C", winrt::hstring(_("Reconnect")), reconnectOptions);
         reconnectBtn.IsEnabled(!isBusy);
         auto weak = get_weak();
@@ -423,12 +412,8 @@ ListViewItem DevicePickerView::BuildDeviceListItem(DevicePickerItemViewModel con
             if (auto self = weak.get()) self->OnDeviceReconnectClicked(devId);
         });
 
-        winrt::Microsoft::UI::Xaml::Media::Brush disconnectBrush{nullptr};
-        if (auto brush = Application::Current().Resources().TryLookup(box_value(L"SystemFillColorCriticalBrush"))) {
-            disconnectBrush = brush.as<Media::Brush>();
-        }
         apc::ui::IconButtonOptions disconnectOptions;
-        disconnectOptions.Foreground = disconnectBrush;
+        disconnectOptions.Foreground = apc::ui::TryThemeBrush(L"SystemFillColorCriticalBrush");
         auto disconnectBtn = apc::ui::CreateIconButton(L"\xE711", winrt::hstring(_("Disconnect")), disconnectOptions);
         disconnectBtn.IsEnabled(!isBusy);
         disconnectBtn.Click([weak, devId](auto const&, auto const&) {
