@@ -10,7 +10,7 @@
     <Grid
         x:Name="RootGrid"
         MinWidth="320"
-        MaxWidth="420">
+        MaxWidth="520">
         <SystemBackdropElement
             x:Name="BackdropElement"
             HorizontalAlignment="Stretch"

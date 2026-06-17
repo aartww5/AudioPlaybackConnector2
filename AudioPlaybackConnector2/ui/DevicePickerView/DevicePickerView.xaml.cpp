@@ -14,6 +14,11 @@ using namespace winrt::Microsoft::UI::Xaml::Controls;
 
 namespace {
 constexpr auto c_pendingActionFallbackTimeout = std::chrono::seconds(2);
+constexpr double c_pickerMinWidth = 320.0;
+constexpr double c_pickerMaxWidth = 520.0;
+constexpr double c_pickerHorizontalChromeWidth = 74.0;
+constexpr double c_connectedActionsWidth = 74.0;
+constexpr double c_globalActionsChromeWidth = 82.0;
 
 void CancelRefreshDevicesOperation(winrt::Windows::Foundation::IAsyncOperation<
                                        winrt::Windows::Devices::Enumeration::DeviceInformationCollection> const& op,
@@ -58,6 +63,44 @@ Button CreateDeviceActionButton(std::wstring_view glyph,
     button.Content(icon);
     return button;
 }
+
+class DevicePickerSizer final {
+public:
+    [[nodiscard]] static double WidthFor(std::vector<DevicePickerItemViewModel> const& items, bool showGlobalActions) {
+        double maxNameWidth = 0.0;
+        bool hasConnectedActions = false;
+        for (auto const& item : items) {
+            maxNameWidth = std::max(maxNameWidth, MeasureTextWidth(item.Name));
+            hasConnectedActions = hasConnectedActions || item.IsConnected;
+        }
+
+        double desiredWidth = maxNameWidth + c_pickerHorizontalChromeWidth;
+        if (hasConnectedActions) {
+            desiredWidth += c_connectedActionsWidth;
+        }
+        if (showGlobalActions) {
+            desiredWidth = std::max(desiredWidth, GlobalActionsWidth());
+        }
+
+        return std::clamp(desiredWidth, c_pickerMinWidth, c_pickerMaxWidth);
+    }
+
+private:
+    [[nodiscard]] static double MeasureTextWidth(winrt::hstring const& text, double fontSize = 14.0) {
+        auto block = TextBlock();
+        block.Text(text);
+        block.FontSize(fontSize);
+        block.TextWrapping(TextWrapping::NoWrap);
+        block.Measure({c_pickerMaxWidth * 2.0, 48.0});
+        return block.DesiredSize().Width;
+    }
+
+    [[nodiscard]] static double GlobalActionsWidth() {
+        auto disconnectAll = MeasureTextWidth(winrt::hstring(_("DisconnectAll")), 12.0);
+        auto reconnectAll = MeasureTextWidth(winrt::hstring(_("ReconnectAll")), 12.0);
+        return disconnectAll + reconnectAll + c_globalActionsChromeWidth;
+    }
+};
 } // namespace
 
 namespace winrt::AudioPlaybackConnector2::implementation {
@@ -323,6 +366,7 @@ void DevicePickerView::RebuildDeviceListFromCache(bool reconcilePendingActions) 
 
     const bool anyBusy = std::any_of(items.begin(), items.end(), [](auto const& item) { return item.IsBusy; });
     ApplyGlobalActionState(connectedCount > 1, !anyBusy && !m_pendingGlobalAction);
+    RootGrid().Width(DevicePickerSizer::WidthFor(items, connectedCount > 1));
 
     if (m_viewModel.Empty()) {
         auto emptyMsg = TextBlock();
