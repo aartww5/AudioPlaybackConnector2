@@ -4,11 +4,10 @@
 #include <SettingsWindow.g.cpp>
 #endif
 
-#include <winrt/Windows.ApplicationModel.h>
-
 #include <core/Settings.hpp>
 #include <core/StringResources.hpp>
 #include <core/ThemeHelper.hpp>
+#include <services/StartupTaskController.hpp>
 #include <services/UpdateService.hpp>
 #include <ui/ButtonHelpers.hpp>
 #include <util/Util.hpp>
@@ -369,10 +368,7 @@ winrt::fire_and_forget SettingsWindow::SyncStartupTaskStateAsync() {
     auto requestId = m_startupRequestId.load();
 
     try {
-        auto task =
-            co_await winrt::Windows::ApplicationModel::StartupTask::GetAsync(L"AudioPlaybackConnector2StartupTask");
-        bool enabled = (task.State() == winrt::Windows::ApplicationModel::StartupTaskState::Enabled ||
-                        task.State() == winrt::Windows::ApplicationModel::StartupTaskState::EnabledByPolicy);
+        bool enabled = co_await StartupTaskController::IsEnabledAsync();
 
         co_await ui;
         if (requestId != m_startupRequestId.load()) co_return;
@@ -401,28 +397,7 @@ winrt::fire_and_forget SettingsWindow::ApplyStartWithWindowsAsync(bool on) {
     bool revertToggle = false;
 
     try {
-        auto task =
-            co_await winrt::Windows::ApplicationModel::StartupTask::GetAsync(L"AudioPlaybackConnector2StartupTask");
-        bool currentlyEnabled = (task.State() == winrt::Windows::ApplicationModel::StartupTaskState::Enabled ||
-                                 task.State() == winrt::Windows::ApplicationModel::StartupTaskState::EnabledByPolicy);
-        if (on == currentlyEnabled) {
-            co_await ui;
-            if (requestId != m_startupRequestId.load()) co_return;
-            if (auto settingsController = m_settingsController) {
-                settingsController->SetStartWithWindows(on);
-            }
-            co_return;
-        }
-
-        bool success = false;
-        if (on) {
-            auto state = co_await task.RequestEnableAsync();
-            success = (state == winrt::Windows::ApplicationModel::StartupTaskState::Enabled ||
-                       state == winrt::Windows::ApplicationModel::StartupTaskState::EnabledByPolicy);
-        } else {
-            task.Disable();
-            success = true;
-        }
+        bool success = co_await StartupTaskController::SetEnabledAsync(on);
 
         co_await ui;
         if (requestId != m_startupRequestId.load()) co_return;
