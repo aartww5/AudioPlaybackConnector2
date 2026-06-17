@@ -16,6 +16,8 @@
 /*//////// Device Manager ////////////////////////////////////////////////////////////////////////////////////*/
 /*------------------------------------------------------------------------------------------------------------*/
 
+enum class DeviceStatusKind { None, Connecting, Reconnecting, Connected, Error };
+
 class DeviceManager : public std::enable_shared_from_this<DeviceManager> {
 public:
     /*------------------------------------------------------------------------------------------------------------*/
@@ -25,8 +27,10 @@ public:
     using DeviceConnectedEvent = Event<winrt::hstring>;
     using DeviceDisconnectedEvent = Event<winrt::hstring>;
     using ConnectionErrorEvent = Event<winrt::hstring, winrt::hstring>;
-    using DeviceStatusEvent =
-        Event<winrt::hstring, winrt::hstring, winrt::Windows::Devices::Enumeration::DevicePickerDisplayStatusOptions>;
+    using DeviceStatusEvent = Event<winrt::hstring,
+                                    winrt::hstring,
+                                    winrt::Windows::Devices::Enumeration::DevicePickerDisplayStatusOptions,
+                                    DeviceStatusKind>;
     using DeviceActivityEvent = Event<winrt::hstring>;
     using AutoReconnectTriggeredEvent = Event<winrt::hstring>;
     using AutoReconnectFailedEvent = Event<winrt::hstring>;

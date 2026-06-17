@@ -4,6 +4,7 @@
 #include <memory>
 
 class DeviceManager;
+enum class DeviceStatusKind;
 
 /*------------------------------------------------------------------------------------------------------------*/
 /*//////// Device Event Router ///////////////////////////////////////////////////////////////////////////////*/
@@ -23,7 +24,8 @@ public:
         std::function<void(winrt::hstring const& id, winrt::hstring const& message)> ConnectionError;
         std::function<void(winrt::hstring const& id)> AutoReconnectTriggered;
         std::function<void(winrt::hstring const& id)> AutoReconnectFailed;
-        std::function<void(winrt::hstring const& id, winrt::hstring const& status)> DeviceStatusChanged;
+        std::function<void(winrt::hstring const& id, winrt::hstring const& status, DeviceStatusKind statusKind)>
+            DeviceStatusChanged;
         std::function<void()> DeviceActivityChanged;
     };
 

@@ -64,12 +64,13 @@ void DeviceEventRouter::Attach(std::shared_ptr<DeviceManager> deviceManager,
             state->callbacks.AutoReconnectFailed(id);
         });
     };
-    m_deviceStatusChangedToken = m_deviceManager->DeviceStatusChanged += [state](auto id, auto status, auto) {
-        Dispatch(state, [state, id = std::move(id), status = std::move(status)]() {
-            if (!state->active.load() || !state->callbacks.DeviceStatusChanged) return;
-            state->callbacks.DeviceStatusChanged(id, status);
-        });
-    };
+    m_deviceStatusChangedToken = m_deviceManager->DeviceStatusChanged +=
+        [state](auto id, auto status, auto, DeviceStatusKind statusKind) {
+            Dispatch(state, [state, id = std::move(id), status = std::move(status), statusKind]() {
+                if (!state->active.load() || !state->callbacks.DeviceStatusChanged) return;
+                state->callbacks.DeviceStatusChanged(id, status, statusKind);
+            });
+        };
     m_deviceActivityChangedToken = m_deviceManager->DeviceActivityChanged += [state](auto id) {
         (void)id;
         Dispatch(state, [state]() {

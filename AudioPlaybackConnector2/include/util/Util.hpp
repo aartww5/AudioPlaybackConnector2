@@ -280,13 +280,20 @@ inline SettingsWindowPlacement CalculateSettingsWindowPlacement(std::optional<RE
     return SettingsWindowPlacement{POINT{x, y}, SIZE{width, height}, workArea, dpi};
 }
 
-inline SettingsWindowPlacement CalculateSettingsWindowPlacementFromBounds(POINT position, SIZE size) {
+inline SettingsWindowPlacement
+CalculateSettingsWindowPlacementFromBounds(POINT position, SIZE size, UINT persistedDpi = USER_DEFAULT_SCREEN_DPI) {
     RECT desiredRect{
         position.x, position.y, position.x + std::max<int32_t>(1, size.cx), position.y + std::max<int32_t>(1, size.cy)};
     auto monitor = MonitorFromRect(&desiredRect, MONITOR_DEFAULTTONEAREST);
     auto workArea = GetMonitorWorkArea(monitor);
     auto dpi = GetMonitorDpi(monitor);
     auto minTrackSize = GetSettingsWindowMinTrackSizeForWorkArea(workArea, dpi);
+
+    if (persistedDpi == 0) persistedDpi = USER_DEFAULT_SCREEN_DPI;
+    if (persistedDpi != dpi) {
+        size.cx = std::max<int32_t>(1, MulDiv(size.cx, static_cast<int>(dpi), static_cast<int>(persistedDpi)));
+        size.cy = std::max<int32_t>(1, MulDiv(size.cy, static_cast<int>(dpi), static_cast<int>(persistedDpi)));
+    }
 
     const int32_t workWidth = std::max<int32_t>(1, workArea.right - workArea.left);
     const int32_t workHeight = std::max<int32_t>(1, workArea.bottom - workArea.top);

@@ -45,12 +45,15 @@ void StringResources::Initialize(HINSTANCE hInst, std::wstring_view language) {
             case LANG_SPANISH: resId = IDR_STRINGS_ES; break;
             case LANG_JAPANESE: resId = IDR_STRINGS_JA; break;
             case LANG_KOREAN: resId = IDR_STRINGS_KO; break;
-            case LANG_CHINESE:
-                if (SUBLANGID(langId) == SUBLANG_CHINESE_TRADITIONAL)
+            case LANG_CHINESE: {
+                const auto subLanguage = SUBLANGID(langId);
+                if (subLanguage == SUBLANG_CHINESE_TRADITIONAL || subLanguage == SUBLANG_CHINESE_HONGKONG ||
+                    subLanguage == SUBLANG_CHINESE_MACAU)
                     resId = IDR_STRINGS_ZH_HANT;
                 else
                     resId = IDR_STRINGS_ZH_HANS;
                 break;
+            }
         }
     }
 

@@ -138,6 +138,8 @@ void Settings::Load(HINSTANCE hInst) {
             bounds.Y = GetOptionalInt32(boundsJson, L"y", 0);
             bounds.Width = GetOptionalInt32(boundsJson, L"width", 0);
             bounds.Height = GetOptionalInt32(boundsJson, L"height", 0);
+            const auto dpi = GetOptionalInt32(boundsJson, L"dpi", USER_DEFAULT_SCREEN_DPI);
+            bounds.Dpi = dpi > 0 ? static_cast<uint32_t>(dpi) : USER_DEFAULT_SCREEN_DPI;
             if (bounds.Width > 0 && bounds.Height > 0) {
                 settingsWindowBounds = bounds;
             } else {
@@ -225,6 +227,8 @@ void Settings::Save(HINSTANCE hInst) {
             boundsJson.Insert(
                 L"height",
                 winrt::Windows::Data::Json::JsonValue::CreateNumberValue(snapshot.SettingsWindowBounds->Height));
+            boundsJson.Insert(
+                L"dpi", winrt::Windows::Data::Json::JsonValue::CreateNumberValue(snapshot.SettingsWindowBounds->Dpi));
             json.Insert(L"settingsWindowBounds", boundsJson);
         }
 

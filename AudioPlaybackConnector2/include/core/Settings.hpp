@@ -15,6 +15,7 @@ struct PersistedWindowBounds {
     int32_t Y = 0;
     int32_t Width = 0;
     int32_t Height = 0;
+    uint32_t Dpi = USER_DEFAULT_SCREEN_DPI;
 
     bool operator==(PersistedWindowBounds const&) const = default;
 };

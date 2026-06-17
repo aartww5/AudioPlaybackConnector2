@@ -483,15 +483,12 @@ void ApplicationHost::SetupDeviceEvents() {
     callbacks.AutoReconnectFailed = [weak](auto const& id) {
         if (auto self = weak.lock()) self->OnAutoReconnectFailed(id);
     };
-    callbacks.DeviceStatusChanged = [weak](auto const&, auto const& status) {
+    callbacks.DeviceStatusChanged = [weak](auto const&, auto const&, DeviceStatusKind statusKind) {
         auto self = weak.lock();
         if (!self) return;
         if (self->m_exiting.load() || !self->m_trayController || !self->m_deviceManager) return;
         if (!self->m_hwnd || !IsWindow(self->m_hwnd)) return;
-        bool forceErrorWhenIdle = !status.empty() && status != winrt::hstring(_("Connecting")) &&
-                                  status != winrt::hstring(_("Reconnecting")) &&
-                                  status != winrt::hstring(_("Connected"));
-        self->RefreshTrayVisualState(forceErrorWhenIdle);
+        self->RefreshTrayVisualState(statusKind == DeviceStatusKind::Error);
     };
     callbacks.DeviceActivityChanged = [weak]() {
         auto self = weak.lock();

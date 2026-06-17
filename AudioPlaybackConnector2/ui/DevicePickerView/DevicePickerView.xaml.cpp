@@ -86,6 +86,9 @@ void DevicePickerView::Initialize(std::shared_ptr<DeviceManager> manager,
     m_onDisconnectAll = std::move(onDisconnectAll);
     m_onReconnectAll = std::move(onReconnectAll);
     TitleText().Text(winrt::hstring(_("TrayMenu_SelectDevice")));
+    auto closeText = winrt::hstring(_("Close"));
+    ToolTipService::SetToolTip(CloseButton(), box_value(closeText));
+    winrt::Microsoft::UI::Xaml::Automation::AutomationProperties::SetName(CloseButton(), closeText);
     DisconnectAllText().Text(winrt::hstring(_("DisconnectAll")));
     ReconnectAllText().Text(winrt::hstring(_("ReconnectAll")));
 }
@@ -303,13 +306,23 @@ void DevicePickerView::RebuildDeviceListFromCache() {
 
 ListViewItem DevicePickerView::BuildDeviceListItem(DevicePickerItemViewModel const& device) {
     auto item = ListViewItem();
+    item.HorizontalContentAlignment(HorizontalAlignment::Stretch);
+
     auto grid = Grid();
+    grid.HorizontalAlignment(HorizontalAlignment::Stretch);
+    grid.ColumnSpacing(8);
     grid.ColumnDefinitions().Append(ColumnDefinition());
     grid.ColumnDefinitions().Append(ColumnDefinition());
+    grid.ColumnDefinitions().GetAt(1).Width(GridLengthHelper::Auto());
 
     auto nameTb = TextBlock();
     nameTb.Text(device.Name);
+    nameTb.MinWidth(0);
     nameTb.VerticalAlignment(VerticalAlignment::Center);
+    nameTb.TextTrimming(TextTrimming::CharacterEllipsis);
+    nameTb.TextWrapping(TextWrapping::NoWrap);
+    nameTb.MaxLines(1);
+    ToolTipService::SetToolTip(nameTb, box_value(device.Name));
     Grid::SetColumn(nameTb, 0);
 
     auto infoPanel = StackPanel();

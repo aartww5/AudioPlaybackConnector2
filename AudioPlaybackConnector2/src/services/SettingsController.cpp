@@ -27,6 +27,7 @@ void SettingsController::SetGlobalAutoReconnect(bool enabled) {
     std::vector<DeviceSettings> devices;
     {
         auto locked = m_settings->LockExclusiveData();
+        if (locked->GlobalAutoReconnect == enabled) return;
         locked->GlobalAutoReconnect = enabled;
         devices = locked->Devices;
     }
@@ -51,6 +52,7 @@ void SettingsController::SetStartWithWindows(bool enabled) {
     if (!m_settings) return;
     {
         auto locked = m_settings->LockExclusiveData();
+        if (locked->StartWithWindows == enabled) return;
         locked->StartWithWindows = enabled;
     }
     m_settings->Save(GetModuleHandleW(nullptr));
@@ -60,6 +62,7 @@ void SettingsController::SetShowNotifications(bool enabled) {
     if (!m_settings) return;
     {
         auto locked = m_settings->LockExclusiveData();
+        if (locked->ShowNotifications == enabled) return;
         locked->ShowNotifications = enabled;
     }
     m_settings->Save(GetModuleHandleW(nullptr));
@@ -104,17 +107,21 @@ void SettingsController::Save() {
 void SettingsController::SetDeviceAutoReconnect(std::wstring const& deviceId, bool enabled) {
     if (!m_settings) return;
 
+    bool changed = false;
     bool globalAutoReconnect = false;
     {
         auto locked = m_settings->LockExclusiveData();
         for (auto& device : locked->Devices) {
             if (device.Id == deviceId) {
+                if (device.AutoReconnect == enabled) return;
                 device.AutoReconnect = enabled;
+                changed = true;
                 break;
             }
         }
         globalAutoReconnect = locked->GlobalAutoReconnect;
     }
+    if (!changed) return;
 
     if (auto manager = m_deviceManager.lock()) {
         manager->SetAutoReconnect(winrt::hstring(deviceId), globalAutoReconnect || enabled);
@@ -125,9 +132,20 @@ void SettingsController::SetDeviceAutoReconnect(std::wstring const& deviceId, bo
 
 void SettingsController::ForgetDevice(std::wstring const& deviceId) {
     if (!m_settings) return;
+    bool changed = false;
+    bool globalAutoReconnect = false;
     {
         auto locked = m_settings->LockExclusiveData();
-        std::erase_if(locked->Devices, [&](auto const& device) { return device.Id == deviceId; });
+        const auto devicesRemoved =
+            std::erase_if(locked->Devices, [&](auto const& device) { return device.Id == deviceId; });
+        const auto lastConnectedRemoved = std::erase(locked->LastConnectedIds, deviceId);
+        changed = devicesRemoved > 0 || lastConnectedRemoved > 0;
+        globalAutoReconnect = locked->GlobalAutoReconnect;
+    }
+    if (!changed) return;
+
+    if (auto manager = m_deviceManager.lock()) {
+        manager->SetAutoReconnect(winrt::hstring(deviceId), globalAutoReconnect);
     }
     m_settings->Save(GetModuleHandleW(nullptr));
 }

@@ -7,6 +7,7 @@
   "Exit": "退出",
   "BluetoothSettings": "蓝牙设置",
   "OpenSettings": "打开设置",
+  "Close": "关闭",
   "Connecting": "正在连接",
   "Connected": "已连接",
   "RequestTimedOut": "请求超时",

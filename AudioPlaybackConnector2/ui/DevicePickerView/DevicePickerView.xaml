@@ -7,7 +7,10 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <Grid x:Name="RootGrid" Width="320">
+    <Grid
+        x:Name="RootGrid"
+        MinWidth="320"
+        MaxWidth="420">
         <SystemBackdropElement
             x:Name="BackdropElement"
             HorizontalAlignment="Stretch"
@@ -15,13 +18,19 @@
             CornerRadius="8" />
         <StackPanel x:Name="ContentPanel">
             <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
                 <TextBlock
                     x:Name="TitleText"
+                    Grid.Column="0"
                     Margin="5"
                     Padding="5"
                     VerticalAlignment="Center"
                     FontSize="14"
-                    FontWeight="SemiBold" />
+                    FontWeight="SemiBold"
+                    TextTrimming="CharacterEllipsis" />
                 <Button
                     x:Name="CloseButton"
                     Grid.Column="1"

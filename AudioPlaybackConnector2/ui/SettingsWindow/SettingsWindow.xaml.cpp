@@ -195,10 +195,14 @@ bool SettingsWindow::StoreCurrentPlacement() {
     if (width <= 0 || height <= 0) return false;
     if (rect.left <= -30000 || rect.top <= -30000) return false;
 
+    auto dpi = GetDpiForWindow(hwnd);
+    if (dpi == 0) dpi = USER_DEFAULT_SCREEN_DPI;
+
     return controller->SetSettingsWindowBounds(PersistedWindowBounds{static_cast<int32_t>(rect.left),
                                                                      static_cast<int32_t>(rect.top),
                                                                      static_cast<int32_t>(width),
-                                                                     static_cast<int32_t>(height)});
+                                                                     static_cast<int32_t>(height),
+                                                                     dpi});
 }
 
 void SettingsWindow::StartWithWindowsToggle_Toggled(IInspectable const& sender, RoutedEventArgs const&) {
@@ -340,8 +344,10 @@ void SettingsWindow::ShowUpdateCheckResult(UpdateCheckResult const& result) {
         default:
             UpdateInfoBar().Severity(InfoBarSeverity::Error);
             UpdateInfoBar().Title(winrt::hstring(_("Settings_UpdateFailed_Title")));
-            UpdateInfoBar().Message(result.ErrorMessage.empty() ? winrt::hstring(_("Settings_UpdateFailed_Message"))
-                                                                : winrt::hstring(result.ErrorMessage));
+            if (!result.ErrorMessage.empty()) {
+                DebugTrace(L"[SettingsWindow] Manual update check failed: {0}", result.ErrorMessage);
+            }
+            UpdateInfoBar().Message(winrt::hstring(_("Settings_UpdateFailed_Message")));
             break;
     }
 

@@ -7,6 +7,7 @@
   "Exit": "종료",
   "BluetoothSettings": "Bluetooth 설정",
   "OpenSettings": "설정 열기",
+  "Close": "닫기",
   "Connecting": "연결 중",
   "Connected": "연결됨",
   "RequestTimedOut": "요청 시간이 초과되었습니다",

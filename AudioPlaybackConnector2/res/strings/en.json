@@ -7,6 +7,7 @@
   "Exit": "Exit",
   "BluetoothSettings": "Bluetooth Settings",
   "OpenSettings": "Open Settings",
+  "Close": "Close",
   "Connecting": "Connecting",
   "Connected": "Connected",
   "RequestTimedOut": "The request timed out",

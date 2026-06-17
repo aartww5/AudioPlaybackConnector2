@@ -39,7 +39,8 @@ void SettingsWindowPresenter::Show(std::shared_ptr<ISettingsController> settings
             if (snapshot.SettingsWindowBounds) {
                 placement = util::CalculateSettingsWindowPlacementFromBounds(
                     POINT{snapshot.SettingsWindowBounds->X, snapshot.SettingsWindowBounds->Y},
-                    SIZE{snapshot.SettingsWindowBounds->Width, snapshot.SettingsWindowBounds->Height});
+                    SIZE{snapshot.SettingsWindowBounds->Width, snapshot.SettingsWindowBounds->Height},
+                    snapshot.SettingsWindowBounds->Dpi);
             }
         }
 
