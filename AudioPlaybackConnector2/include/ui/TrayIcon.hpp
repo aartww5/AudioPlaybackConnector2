@@ -53,7 +53,7 @@ private:
 
     static constexpr GUID c_trayGuid = {0xcf5eeb74, 0x90fb, 0x441e, {0xbf, 0x17, 0x72, 0x84, 0x02, 0x0e, 0xf0, 0x5c}};
     static constexpr int SIZE_COUNT = 4;
-    static constexpr int CONNECTING_FRAME_COUNT = 5;
+    static constexpr int CONNECTING_FRAME_COUNT = 8;
     static constexpr int SIZES[SIZE_COUNT] = {16, 20, 24, 32};
     wil::unique_hicon m_hIdle[SIZE_COUNT];
     wil::unique_hicon m_hConnected[SIZE_COUNT];

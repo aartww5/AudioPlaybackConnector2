@@ -253,7 +253,8 @@ void TrayIcon::CreateAllIcons() {
     decltype(m_hConnected) connected{};
     decltype(m_hError) error{};
     decltype(m_hConnecting) connecting{};
-    constexpr std::array<float, CONNECTING_FRAME_COUNT> connectingPulse{0.35f, 0.65f, 1.0f, 0.65f, 0.35f};
+    constexpr std::array<float, CONNECTING_FRAME_COUNT> connectingPulse{
+        0.10f, 0.4f, 0.7f, 1.0f, 1.0f, 0.7f, 0.4f, 0.10f};
 
     for (int i = 0; i < SIZE_COUNT; ++i) {
         int size = SIZES[i];
