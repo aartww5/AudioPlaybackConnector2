@@ -33,6 +33,7 @@ private:
     void ResetWindowPlacement();
     void RebuildDeviceList();
     void SetUpdateCheckBusy(bool busy);
+    void SetStartupTaskBusy(bool busy);
     void ShowUpdateCheckResult(UpdateCheckResult const& result);
     void StartWithWindowsToggle_Toggled(winrt::Windows::Foundation::IInspectable const& sender,
                                         winrt::Microsoft::UI::Xaml::RoutedEventArgs const& e);

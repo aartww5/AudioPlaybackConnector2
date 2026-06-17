@@ -328,6 +328,12 @@ void SettingsWindow::SetUpdateCheckBusy(bool busy) {
     }
 }
 
+void SettingsWindow::SetStartupTaskBusy(bool busy) {
+    StartWithWindowsToggle().IsEnabled(!busy);
+    StartupTaskProgress().IsActive(busy);
+    StartupTaskProgress().Visibility(busy ? Visibility::Visible : Visibility::Collapsed);
+}
+
 void SettingsWindow::ShowUpdateCheckResult(UpdateCheckResult const& result) {
     OpenAppInstallerButton().Visibility(Visibility::Collapsed);
 
@@ -366,12 +372,14 @@ winrt::fire_and_forget SettingsWindow::SyncStartupTaskStateAsync() {
     auto lifetime = get_strong();
     winrt::apartment_context ui;
     auto requestId = m_startupRequestId.load();
+    SetStartupTaskBusy(true);
 
     try {
         bool enabled = co_await StartupTaskController::IsEnabledAsync();
 
         co_await ui;
         if (requestId != m_startupRequestId.load()) co_return;
+        SetStartupTaskBusy(false);
 
         m_suppressStartupToggle = true;
         StartWithWindowsToggle().IsOn(enabled);
@@ -379,6 +387,7 @@ winrt::fire_and_forget SettingsWindow::SyncStartupTaskStateAsync() {
         if (auto settingsController = m_settingsController) {
             settingsController->SetStartWithWindows(enabled);
         }
+        co_return;
     } catch (winrt::hresult_error const& ex) {
         DebugTrace(L"[SettingsWindow] SyncStartupTaskStateAsync failed: 0x{0:08X} {1}",
                    static_cast<uint32_t>(ex.code()),
@@ -388,6 +397,11 @@ winrt::fire_and_forget SettingsWindow::SyncStartupTaskStateAsync() {
     } catch (...) {
         DebugTrace(L"[SettingsWindow] SyncStartupTaskStateAsync failed: unknown exception");
     }
+
+    co_await ui;
+    if (requestId == m_startupRequestId.load()) {
+        SetStartupTaskBusy(false);
+    }
 }
 
 winrt::fire_and_forget SettingsWindow::ApplyStartWithWindowsAsync(bool on) {
@@ -395,12 +409,14 @@ winrt::fire_and_forget SettingsWindow::ApplyStartWithWindowsAsync(bool on) {
     winrt::apartment_context ui;
     auto requestId = ++m_startupRequestId;
     bool revertToggle = false;
+    SetStartupTaskBusy(true);
 
     try {
         bool success = co_await StartupTaskController::SetEnabledAsync(on);
 
         co_await ui;
         if (requestId != m_startupRequestId.load()) co_return;
+        SetStartupTaskBusy(false);
 
         if (!success) {
             if (auto settingsController = m_settingsController) {
@@ -431,6 +447,7 @@ winrt::fire_and_forget SettingsWindow::ApplyStartWithWindowsAsync(bool on) {
     if (revertToggle) {
         co_await ui;
         if (requestId != m_startupRequestId.load()) co_return;
+        SetStartupTaskBusy(false);
         if (auto settingsController = m_settingsController) {
             settingsController->SetStartWithWindows(!on);
         }
