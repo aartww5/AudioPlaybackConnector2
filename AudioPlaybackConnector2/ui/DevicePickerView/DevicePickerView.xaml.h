@@ -2,7 +2,9 @@
 
 #include <DevicePickerView.g.h>
 #include <ui/DevicePickerViewModel.hpp>
+#include <chrono>
 #include <mutex>
+#include <unordered_map>
 
 class DeviceManager;
 
@@ -41,13 +43,20 @@ private:
                                 winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
     void OnReconnectAllClicked(winrt::Windows::Foundation::IInspectable const&,
                                winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+    void OnDeviceDisconnectClicked(winrt::hstring const& id);
+    void OnDeviceReconnectClicked(winrt::hstring const& id);
 
     void ApplyDeviceResults(winrt::Windows::Devices::Enumeration::DeviceInformationCollection const& devices,
                             bool listWasEmpty,
                             uint64_t requestId);
     void OnDeviceEnumerationFailed(bool listWasEmpty, uint64_t requestId);
-    void RebuildDeviceListFromCache();
+    void RebuildDeviceListFromCache(bool reconcilePendingActions = true);
     winrt::Microsoft::UI::Xaml::Controls::ListViewItem BuildDeviceListItem(DevicePickerItemViewModel const& device);
+    bool BeginPendingDeviceAction(winrt::hstring const& id);
+    bool BeginPendingGlobalAction();
+    bool IsDeviceActionPending(winrt::hstring const& id) const;
+    void ReconcilePendingActions(std::vector<DevicePickerItemViewModel> const& items);
+    void ApplyGlobalActionState(bool visible, bool enabled);
 
     DevicePickerViewModel m_viewModel;
     std::function<void()> m_onClose;
@@ -65,6 +74,9 @@ private:
     mutable std::mutex m_refreshDevicesOpMutex;
     winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::Devices::Enumeration::DeviceInformationCollection>
         m_refreshDevicesOp{nullptr};
+    std::unordered_map<std::wstring, std::chrono::steady_clock::time_point> m_pendingDeviceActions;
+    std::chrono::steady_clock::time_point m_pendingGlobalActionStarted{};
+    bool m_pendingGlobalAction = false;
 };
 } // namespace winrt::AudioPlaybackConnector2::implementation
 

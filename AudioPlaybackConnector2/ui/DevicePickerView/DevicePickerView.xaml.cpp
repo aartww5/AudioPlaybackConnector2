@@ -13,6 +13,8 @@ using namespace winrt::Microsoft::UI::Xaml;
 using namespace winrt::Microsoft::UI::Xaml::Controls;
 
 namespace {
+constexpr auto c_pendingActionFallbackTimeout = std::chrono::seconds(2);
+
 void CancelRefreshDevicesOperation(winrt::Windows::Foundation::IAsyncOperation<
                                        winrt::Windows::Devices::Enumeration::DeviceInformationCollection> const& op,
                                    std::wstring_view context) noexcept {
@@ -301,7 +303,7 @@ void DevicePickerView::OnDeviceEnumerationFailed(bool listWasEmpty, uint64_t req
     m_activeLoadRequestId.store(0);
 }
 
-void DevicePickerView::RebuildDeviceListFromCache() {
+void DevicePickerView::RebuildDeviceListFromCache(bool reconcilePendingActions) {
     m_suppressSelectionChanged.store(true);
     DeviceList().SelectedItem(nullptr);
     DeviceList().Items().Clear();
@@ -310,7 +312,17 @@ void DevicePickerView::RebuildDeviceListFromCache() {
     if (auto manager = m_deviceManager.lock()) {
         connectedCount = static_cast<int>(manager->GetConnectedDevices().size());
     }
-    GlobalActionsPanel().Visibility(connectedCount > 1 ? Visibility::Visible : Visibility::Collapsed);
+
+    std::vector<DevicePickerItemViewModel> items;
+    if (!m_viewModel.Empty()) {
+        items = m_viewModel.SnapshotItems();
+        if (reconcilePendingActions) {
+            ReconcilePendingActions(items);
+        }
+    }
+
+    const bool anyBusy = std::any_of(items.begin(), items.end(), [](auto const& item) { return item.IsBusy; });
+    ApplyGlobalActionState(connectedCount > 1, !anyBusy && !m_pendingGlobalAction);
 
     if (m_viewModel.Empty()) {
         auto emptyMsg = TextBlock();
@@ -323,7 +335,6 @@ void DevicePickerView::RebuildDeviceListFromCache() {
         }
         DeviceList().Items().Append(emptyMsg);
     } else {
-        auto items = m_viewModel.SnapshotItems();
         for (auto const& device : items) {
             DeviceList().Items().Append(BuildDeviceListItem(device));
         }
@@ -336,6 +347,7 @@ void DevicePickerView::RebuildDeviceListFromCache() {
 ListViewItem DevicePickerView::BuildDeviceListItem(DevicePickerItemViewModel const& device) {
     auto item = ListViewItem();
     item.HorizontalContentAlignment(HorizontalAlignment::Stretch);
+    const bool isBusy = device.IsBusy || m_pendingGlobalAction || IsDeviceActionPending(device.Id);
 
     auto grid = Grid();
     grid.HorizontalAlignment(HorizontalAlignment::Stretch);
@@ -361,7 +373,7 @@ ListViewItem DevicePickerView::BuildDeviceListItem(DevicePickerItemViewModel con
     infoPanel.Spacing(6);
     Grid::SetColumn(infoPanel, 1);
 
-    if (device.IsBusy) {
+    if (isBusy) {
         item.IsEnabled(false);
         item.Opacity(0.6);
 
@@ -375,17 +387,16 @@ ListViewItem DevicePickerView::BuildDeviceListItem(DevicePickerItemViewModel con
 
     if (device.IsConnected) {
         auto devId = device.Id;
-        auto onReconnect = m_onDeviceReconnect;
-        auto onDisconnect = m_onDeviceDisconnect;
 
         winrt::Microsoft::UI::Xaml::Media::Brush reconnectBrush{nullptr};
         if (auto brush = Application::Current().Resources().TryLookup(box_value(L"AccentFillColorDefaultBrush"))) {
             reconnectBrush = brush.as<Media::Brush>();
         }
         auto reconnectBtn = CreateDeviceActionButton(L"\xE72C", winrt::hstring(_("Reconnect")), reconnectBrush);
-        reconnectBtn.IsEnabled(!device.IsBusy);
-        reconnectBtn.Click([onReconnect, devId](auto const&, auto const&) {
-            if (onReconnect) onReconnect(devId);
+        reconnectBtn.IsEnabled(!isBusy);
+        auto weak = get_weak();
+        reconnectBtn.Click([weak, devId](auto const&, auto const&) {
+            if (auto self = weak.get()) self->OnDeviceReconnectClicked(devId);
         });
 
         winrt::Microsoft::UI::Xaml::Media::Brush disconnectBrush{nullptr};
@@ -393,9 +404,9 @@ ListViewItem DevicePickerView::BuildDeviceListItem(DevicePickerItemViewModel con
             disconnectBrush = brush.as<Media::Brush>();
         }
         auto disconnectBtn = CreateDeviceActionButton(L"\xE711", winrt::hstring(_("Disconnect")), disconnectBrush);
-        disconnectBtn.IsEnabled(!device.IsBusy);
-        disconnectBtn.Click([onDisconnect, devId](auto const&, auto const&) {
-            if (onDisconnect) onDisconnect(devId);
+        disconnectBtn.IsEnabled(!isBusy);
+        disconnectBtn.Click([weak, devId](auto const&, auto const&) {
+            if (auto self = weak.get()) self->OnDeviceDisconnectClicked(devId);
         });
 
         infoPanel.Children().Append(reconnectBtn);
@@ -407,6 +418,55 @@ ListViewItem DevicePickerView::BuildDeviceListItem(DevicePickerItemViewModel con
     item.Content(grid);
     item.Tag(box_value(device.Id));
     return item;
+}
+
+bool DevicePickerView::BeginPendingDeviceAction(winrt::hstring const& id) {
+    if (id.empty() || m_pendingGlobalAction || IsDeviceActionPending(id)) return false;
+    m_pendingDeviceActions[std::wstring(id)] = std::chrono::steady_clock::now();
+    RebuildDeviceListFromCache(false);
+    return true;
+}
+
+bool DevicePickerView::BeginPendingGlobalAction() {
+    if (m_pendingGlobalAction) return false;
+    m_pendingGlobalAction = true;
+    m_pendingGlobalActionStarted = std::chrono::steady_clock::now();
+    RebuildDeviceListFromCache(false);
+    return true;
+}
+
+bool DevicePickerView::IsDeviceActionPending(winrt::hstring const& id) const {
+    return m_pendingDeviceActions.contains(std::wstring(id));
+}
+
+void DevicePickerView::ReconcilePendingActions(std::vector<DevicePickerItemViewModel> const& items) {
+    auto const now = std::chrono::steady_clock::now();
+    auto manager = m_deviceManager.lock();
+    for (auto it = m_pendingDeviceActions.begin(); it != m_pendingDeviceActions.end();) {
+        auto id = winrt::hstring(it->first);
+        const bool managerOwnsBusy = manager && manager->IsDeviceBusy(id);
+        const bool expired = now - it->second >= c_pendingActionFallbackTimeout;
+        if (managerOwnsBusy || expired) {
+            it = m_pendingDeviceActions.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
+    if (m_pendingGlobalAction) {
+        const bool anyBusy = std::any_of(items.begin(), items.end(), [](auto const& item) { return item.IsBusy; });
+        const bool expired = now - m_pendingGlobalActionStarted >= c_pendingActionFallbackTimeout;
+        if (anyBusy || expired) {
+            m_pendingGlobalAction = false;
+            m_pendingGlobalActionStarted = {};
+        }
+    }
+}
+
+void DevicePickerView::ApplyGlobalActionState(bool visible, bool enabled) {
+    GlobalActionsPanel().Visibility(visible ? Visibility::Visible : Visibility::Collapsed);
+    DisconnectAllButton().IsEnabled(visible && enabled);
+    ReconnectAllButton().IsEnabled(visible && enabled);
 }
 
 /*------------------------------------------------------------------------------------------------------------*/
@@ -434,19 +494,32 @@ void DevicePickerView::OnDeviceSelected(winrt::Windows::Foundation::IInspectable
     if (id.empty()) return;
 
     if (!m_viewModel.CanSelect(id)) return;
+    if (!BeginPendingDeviceAction(id)) return;
 
     if (m_onDeviceSelected) {
         m_onDeviceSelected(id);
     }
 }
 
+void DevicePickerView::OnDeviceDisconnectClicked(winrt::hstring const& id) {
+    if (!BeginPendingDeviceAction(id)) return;
+    if (m_onDeviceDisconnect) m_onDeviceDisconnect(id);
+}
+
+void DevicePickerView::OnDeviceReconnectClicked(winrt::hstring const& id) {
+    if (!BeginPendingDeviceAction(id)) return;
+    if (m_onDeviceReconnect) m_onDeviceReconnect(id);
+}
+
 void DevicePickerView::OnDisconnectAllClicked(winrt::Windows::Foundation::IInspectable const&,
                                               winrt::Microsoft::UI::Xaml::RoutedEventArgs const&) {
+    if (!BeginPendingGlobalAction()) return;
     if (m_onDisconnectAll) m_onDisconnectAll();
 }
 
 void DevicePickerView::OnReconnectAllClicked(winrt::Windows::Foundation::IInspectable const&,
                                              winrt::Microsoft::UI::Xaml::RoutedEventArgs const&) {
+    if (!BeginPendingGlobalAction()) return;
     if (m_onReconnectAll) m_onReconnectAll();
 }
 } // namespace winrt::AudioPlaybackConnector2::implementation
