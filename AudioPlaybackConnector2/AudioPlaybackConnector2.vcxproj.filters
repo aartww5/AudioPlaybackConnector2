@@ -74,6 +74,9 @@
     <ClCompile Include="src\services\StartupTaskController.cpp">
       <Filter>src\services</Filter>
     </ClCompile>
+    <ClCompile Include="src\services\ToastContentBuilder.cpp">
+      <Filter>src\services</Filter>
+    </ClCompile>
     <ClCompile Include="src\services\TrayController.cpp">
       <Filter>src\services</Filter>
     </ClCompile>
@@ -170,6 +173,9 @@
       <Filter>include\services</Filter>
     </ClInclude>
     <ClInclude Include="include\services\StartupTaskController.hpp">
+      <Filter>include\services</Filter>
+    </ClInclude>
+    <ClInclude Include="include\services\ToastContentBuilder.hpp">
       <Filter>include\services</Filter>
     </ClInclude>
     <ClInclude Include="include\services\TrayController.hpp">
