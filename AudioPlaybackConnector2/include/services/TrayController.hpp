@@ -83,7 +83,6 @@ private:
     void EnsureDevicePickerViewCreated();
     void LaunchBluetoothSettings();
     winrt::Microsoft::UI::Xaml::Controls::Flyout CreatePickerFlyout();
-    static void StripFlyoutPresenterStyle(winrt::Microsoft::UI::Xaml::DependencyObject const& content);
     [[nodiscard]] util::SettingsWindowPlacement CalculateSettingsWindowPlacement() const;
     [[nodiscard]] bool IsCursorOverTrayIcon() const;
     void OnTrayIconDoubleClick();

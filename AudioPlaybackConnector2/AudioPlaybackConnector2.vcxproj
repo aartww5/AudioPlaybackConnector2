@@ -151,6 +151,7 @@
     <ClInclude Include="include\services\UpdateService.hpp" />
     <ClInclude Include="include\ui\ButtonHelpers.hpp" />
     <ClInclude Include="include\ui\DevicePickerViewModel.hpp" />
+    <ClInclude Include="include\ui\FlyoutPresenterStyle.hpp" />
     <ClInclude Include="include\ui\SettingsViewModel.hpp" />
     <ClInclude Include="include\ui\TrayIcon.hpp" />
     <ClInclude Include="include\ui\TrayContextMenu.hpp" />
@@ -202,6 +203,7 @@
     <ClCompile Include="src\services\TrayController.cpp" />
     <ClCompile Include="src\services\UpdateService.cpp" />
     <ClCompile Include="src\ui\DevicePickerViewModel.cpp" />
+    <ClCompile Include="src\ui\FlyoutPresenterStyle.cpp" />
     <ClCompile Include="src\ui\SettingsViewModel.cpp" />
     <ClCompile Include="src\ui\TrayIcon.cpp" />
     <ClCompile Include="src\ui\TrayContextMenu.cpp" />

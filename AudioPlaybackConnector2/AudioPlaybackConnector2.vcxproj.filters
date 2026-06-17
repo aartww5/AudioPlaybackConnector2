@@ -89,6 +89,9 @@
     <ClCompile Include="src\ui\DevicePickerViewModel.cpp">
       <Filter>src\ui</Filter>
     </ClCompile>
+    <ClCompile Include="src\ui\FlyoutPresenterStyle.cpp">
+      <Filter>src\ui</Filter>
+    </ClCompile>
     <ClCompile Include="src\ui\SettingsViewModel.cpp">
       <Filter>src\ui</Filter>
     </ClCompile>
@@ -194,6 +197,9 @@
       <Filter>include\ui</Filter>
     </ClInclude>
     <ClInclude Include="include\ui\DevicePickerViewModel.hpp">
+      <Filter>include\ui</Filter>
+    </ClInclude>
+    <ClInclude Include="include\ui\FlyoutPresenterStyle.hpp">
       <Filter>include\ui</Filter>
     </ClInclude>
     <ClInclude Include="include\ui\SettingsViewModel.hpp">

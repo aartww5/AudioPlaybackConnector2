@@ -3,6 +3,7 @@
 #include <core/DeviceManager.hpp>
 #include <core/ThemeHelper.hpp>
 #include <core/StringResources.hpp>
+#include <ui/FlyoutPresenterStyle.hpp>
 #include <util/Util.hpp>
 
 using namespace winrt;
@@ -547,31 +548,6 @@ void TrayController::PreloadDevicePicker() {
     }
 }
 
-void TrayController::StripFlyoutPresenterStyle(winrt::Microsoft::UI::Xaml::DependencyObject const& content) {
-    try {
-        auto parent = winrt::Microsoft::UI::Xaml::Media::VisualTreeHelper::GetParent(content);
-        while (parent) {
-            auto presenter = parent.try_as<Controls::FlyoutPresenter>();
-            if (presenter) {
-                presenter.Background(nullptr);
-                presenter.BorderBrush(nullptr);
-                presenter.BorderThickness({0});
-                presenter.Padding({0});
-                presenter.MinWidth(0);
-                presenter.MinHeight(0);
-                break;
-            }
-            parent = winrt::Microsoft::UI::Xaml::Media::VisualTreeHelper::GetParent(parent);
-        }
-    } catch (winrt::hresult_error const& ex) {
-        util::DebugTraceException(L"[TrayController] ERROR: StripFlyoutPresenterStyle failed", ex);
-    } catch (std::exception const& ex) {
-        util::DebugTraceException(L"[TrayController] ERROR: StripFlyoutPresenterStyle failed", ex);
-    } catch (...) {
-        util::DebugTraceUnknownException(L"[TrayController] ERROR: StripFlyoutPresenterStyle failed");
-    }
-}
-
 Controls::Flyout TrayController::CreatePickerFlyout() {
     Controls::Flyout flyout;
     flyout.ShouldConstrainToRootBounds(false);
@@ -582,7 +558,7 @@ Controls::Flyout TrayController::CreatePickerFlyout() {
         auto self = weak.lock();
         if (self && !self->m_isTearingDown.load() && self->m_pickerFlyout) {
             self->m_pickerFlyoutState.store(PickerFlyoutState::Open);
-            StripFlyoutPresenterStyle(
+            apc::ui::StripFlyoutPresenterStyle(
                 self->m_pickerFlyout.Content().as<winrt::Microsoft::UI::Xaml::DependencyObject>());
         }
     });
