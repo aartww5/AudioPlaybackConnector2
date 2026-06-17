@@ -469,6 +469,10 @@ void SettingsWindow::RebuildDeviceList() {
 
     auto secondaryBrush =
         apc::ui::ThemeBrushOrFallback(L"TextFillColorSecondaryBrush", winrt::Windows::UI::Colors::Gray());
+    auto rowBackgroundBrush = apc::ui::ThemeBrushOrFallback(L"CardBackgroundFillColorSecondaryBrush",
+                                                            winrt::Windows::UI::Colors::Transparent());
+    auto rowBorderBrush =
+        apc::ui::ThemeBrushOrFallback(L"CardStrokeColorDefaultBrush", winrt::Windows::UI::Colors::Transparent());
 
     // Snapshot settings through the controller, then build UI without holding any settings lock.
     auto snapshot = controller->Snapshot();
@@ -486,14 +490,20 @@ void SettingsWindow::RebuildDeviceList() {
     }
 
     for (auto& dev : devices) {
+        auto row = Border();
+        row.Padding({12, 10, 12, 10});
+        row.HorizontalAlignment(HorizontalAlignment::Stretch);
+        row.Background(rowBackgroundBrush);
+        row.BorderBrush(rowBorderBrush);
+        row.BorderThickness({1, 1, 1, 1});
+        row.CornerRadius({6, 6, 6, 6});
+
         auto item = Grid();
         item.HorizontalAlignment(HorizontalAlignment::Stretch);
         item.ColumnSpacing(12);
         item.ColumnDefinitions().Append(ColumnDefinition());
         item.ColumnDefinitions().Append(ColumnDefinition());
-        item.ColumnDefinitions().Append(ColumnDefinition());
         item.ColumnDefinitions().GetAt(1).Width(GridLengthHelper::Auto());
-        item.ColumnDefinitions().GetAt(2).Width(GridLengthHelper::Auto());
 
         auto namePanel = StackPanel();
         namePanel.MinWidth(0);
@@ -519,6 +529,12 @@ void SettingsWindow::RebuildDeviceList() {
 
         Grid::SetColumn(namePanel, 0);
 
+        auto actionPanel = StackPanel();
+        actionPanel.Orientation(Orientation::Horizontal);
+        actionPanel.VerticalAlignment(VerticalAlignment::Center);
+        actionPanel.Spacing(10);
+        Grid::SetColumn(actionPanel, 1);
+
         auto toggle = ToggleSwitch();
         toggle.IsOn(globalAutoReconnect || dev.AutoReconnect);
         toggle.IsEnabled(!globalAutoReconnect);
@@ -539,14 +555,16 @@ void SettingsWindow::RebuildDeviceList() {
                 }
             }
         });
-        Grid::SetColumn(toggle, 1);
 
-        auto forgetBtn = Button();
-        forgetBtn.MinWidth(80);
-        forgetBtn.VerticalAlignment(VerticalAlignment::Center);
+        apc::ui::IconButtonOptions forgetOptions;
+        forgetOptions.Width = 36;
+        forgetOptions.Height = 32;
+        forgetOptions.IconFontSize = 14;
+        forgetOptions.Foreground = apc::ui::TryThemeBrush(L"SystemFillColorCriticalBrush");
+        forgetOptions.TransparentBackground = false;
+        forgetOptions.Borderless = false;
         auto forgetText = winrt::hstring(_("Device_Forget"));
-        forgetBtn.Content(apc::ui::CreateIconTextContent(L"\xE74D", forgetText));
-        apc::ui::SetButtonLabel(forgetBtn, forgetText);
+        auto forgetBtn = apc::ui::CreateIconButton(L"\xE74D", forgetText, forgetOptions);
         forgetBtn.Click([id = dev.Id, weak](auto, auto) {
             if (auto self = weak.get()) {
                 if (auto settingsController = self->m_settingsController) {
@@ -555,12 +573,13 @@ void SettingsWindow::RebuildDeviceList() {
                 self->RebuildDeviceList();
             }
         });
-        Grid::SetColumn(forgetBtn, 2);
 
         item.Children().Append(namePanel);
-        item.Children().Append(toggle);
-        item.Children().Append(forgetBtn);
-        DevicesPanel().Children().Append(item);
+        actionPanel.Children().Append(toggle);
+        actionPanel.Children().Append(forgetBtn);
+        item.Children().Append(actionPanel);
+        row.Child(item);
+        DevicesPanel().Children().Append(row);
     }
 }
 
