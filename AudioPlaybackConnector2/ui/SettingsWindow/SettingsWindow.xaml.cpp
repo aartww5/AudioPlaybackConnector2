@@ -469,10 +469,6 @@ void SettingsWindow::RebuildDeviceList() {
 
     auto secondaryBrush =
         apc::ui::ThemeBrushOrFallback(L"TextFillColorSecondaryBrush", winrt::Windows::UI::Colors::Gray());
-    auto rowBackgroundBrush = apc::ui::ThemeBrushOrFallback(L"CardBackgroundFillColorSecondaryBrush",
-                                                            winrt::Windows::UI::Colors::Transparent());
-    auto rowBorderBrush =
-        apc::ui::ThemeBrushOrFallback(L"CardStrokeColorDefaultBrush", winrt::Windows::UI::Colors::Transparent());
 
     // Snapshot settings through the controller, then build UI without holding any settings lock.
     auto snapshot = controller->Snapshot();
@@ -490,15 +486,8 @@ void SettingsWindow::RebuildDeviceList() {
     }
 
     for (auto& dev : devices) {
-        auto row = Border();
-        row.Padding({12, 10, 12, 10});
-        row.HorizontalAlignment(HorizontalAlignment::Stretch);
-        row.Background(rowBackgroundBrush);
-        row.BorderBrush(rowBorderBrush);
-        row.BorderThickness({1, 1, 1, 1});
-        row.CornerRadius({6, 6, 6, 6});
-
         auto item = Grid();
+        item.Margin({0, 6, 0, 6});
         item.HorizontalAlignment(HorizontalAlignment::Stretch);
         item.ColumnSpacing(12);
         item.ColumnDefinitions().Append(ColumnDefinition());
@@ -578,8 +567,7 @@ void SettingsWindow::RebuildDeviceList() {
         actionPanel.Children().Append(toggle);
         actionPanel.Children().Append(forgetBtn);
         item.Children().Append(actionPanel);
-        row.Child(item);
-        DevicesPanel().Children().Append(row);
+        DevicesPanel().Children().Append(item);
     }
 }
 

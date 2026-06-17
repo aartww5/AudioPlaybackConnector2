@@ -78,32 +78,28 @@
                             FontWeight="SemiBold"
                             Text="Connection" />
 
-                        <Border
-                            Padding="12"
-                            Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            BorderThickness="1"
-                            CornerRadius="6">
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-                                <StackPanel MinWidth="0">
-                                    <TextBlock
-                                        x:Name="AutoReconnectLabel"
-                                        Text="Auto-reconnect on startup"
-                                        TextWrapping="Wrap" />
-                                    <TextBlock
-                                        x:Name="AutoReconnectDesc"
-                                        FontSize="12"
-                                        Foreground="{ThemeResource SystemControlForegroundBaseMediumBrush}"
-                                        Text="Automatically connects to the last used device."
-                                        TextWrapping="Wrap" />
-                                </StackPanel>
-                                <ToggleSwitch
-                                    x:Name="AutoReconnectToggle"
-                                    Grid.Column="1"
-                                    VerticalAlignment="Center"
-                                    MinWidth="64" />
-                            </Grid>
-                        </Border>
+                        <Grid
+                            Margin="0,2,0,2"
+                            ColumnDefinitions="*,Auto"
+                            ColumnSpacing="12">
+                            <StackPanel MinWidth="0">
+                                <TextBlock
+                                    x:Name="AutoReconnectLabel"
+                                    Text="Auto-reconnect on startup"
+                                    TextWrapping="Wrap" />
+                                <TextBlock
+                                    x:Name="AutoReconnectDesc"
+                                    FontSize="12"
+                                    Foreground="{ThemeResource SystemControlForegroundBaseMediumBrush}"
+                                    Text="Automatically connects to the last used device."
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
+                            <ToggleSwitch
+                                x:Name="AutoReconnectToggle"
+                                Grid.Column="1"
+                                VerticalAlignment="Center"
+                                MinWidth="64" />
+                        </Grid>
 
                         <StackPanel x:Name="DevicesPanel" Spacing="8" />
                     </StackPanel>
