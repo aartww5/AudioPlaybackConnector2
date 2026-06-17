@@ -69,7 +69,7 @@ void ApplicationHost::PerformTeardown(bool saveLastConnected) noexcept {
         m_notificationService->Teardown();
     }
     if (saveLastConnected) {
-        SaveLastConnectedDevices();
+        SaveLastConnectedDevices(/*saveImmediately=*/true);
     }
     if (m_deviceManager) {
         m_deviceManager->ShutdownForProcessExit();
@@ -363,7 +363,7 @@ void ApplicationHost::TryAutoReconnect() {
     }
 }
 
-void ApplicationHost::SaveLastConnectedDevices() {
+void ApplicationHost::SaveLastConnectedDevices(bool saveImmediately) {
     try {
         if (!m_settings || !m_deviceManager) return;
 
@@ -377,7 +377,11 @@ void ApplicationHost::SaveLastConnectedDevices() {
                 }
             }
         }
-        ScheduleDeferredSettingsSave();
+        if (saveImmediately) {
+            m_settings->Save(GetModuleHandleW(nullptr));
+        } else {
+            ScheduleDeferredSettingsSave();
+        }
     } catch (winrt::hresult_error const& ex) {
         util::DebugTraceException(L"[App] SaveLastConnectedDevices ERROR", ex);
     } catch (std::exception const& ex) {
@@ -392,7 +396,7 @@ void ApplicationHost::HandlePowerSuspend() {
     m_powerTransitionCoordinator.HandleSuspend(
         [weak]() {
             if (auto self = weak.lock()) {
-                self->SaveLastConnectedDevices();
+                self->SaveLastConnectedDevices(/*saveImmediately=*/true);
             }
         },
         m_deviceManager);

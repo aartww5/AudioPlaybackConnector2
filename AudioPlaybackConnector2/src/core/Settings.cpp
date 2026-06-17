@@ -57,6 +57,31 @@ winrt::Windows::Data::Json::JsonArray GetOptionalArray(winrt::Windows::Data::Jso
     auto value = json.Lookup(key);
     return value.ValueType() == winrt::Windows::Data::Json::JsonValueType::Array ? value.GetArray() : nullptr;
 }
+
+void BackupUnreadableSettingsFile(std::filesystem::path const& path) noexcept {
+    if (path.empty()) return;
+
+    try {
+        if (!std::filesystem::exists(path)) return;
+
+        auto backup = path;
+        backup += L".corrupt.bak";
+        for (int suffix = 1; std::filesystem::exists(backup) && suffix < 100; ++suffix) {
+            backup = path;
+            backup += std::format(L".corrupt.{}.bak", suffix);
+        }
+
+        if (MoveFileExW(path.c_str(), backup.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+            DebugTrace(L"[Settings] Corrupt settings file moved to: {0}", backup.wstring());
+        } else {
+            DebugTrace(L"[Settings] ERROR: failed to move corrupt settings file: {0}", path.wstring());
+        }
+    } catch (std::exception const& ex) {
+        DebugTrace(L"[Settings] ERROR: failed to backup corrupt settings file: {0}", util::Utf8ToUtf16(ex.what()));
+    } catch (...) {
+        DebugTrace(L"[Settings] ERROR: failed to backup corrupt settings file");
+    }
+}
 } // namespace
 
 /*------------------------------------------------------------------------------------------------------------*/
@@ -64,8 +89,9 @@ winrt::Windows::Data::Json::JsonArray GetOptionalArray(winrt::Windows::Data::Jso
 /*------------------------------------------------------------------------------------------------------------*/
 
 void Settings::Load(HINSTANCE hInst) {
+    std::filesystem::path path;
     try {
-        auto path = GetPath(hInst);
+        path = GetPath(hInst);
         if (!std::filesystem::exists(path)) return;
 
         wil::unique_hfile hFile(CreateFileW(
@@ -155,10 +181,13 @@ void Settings::Load(HINSTANCE hInst) {
         m_data.LastConnectedIds = std::move(lastConnectedIds);
     } catch (winrt::hresult_error const& ex) {
         DebugTrace(L"[Settings] Load ERROR (hresult): {0}", ex.message());
+        BackupUnreadableSettingsFile(path);
     } catch (std::exception const& ex) {
         DebugTrace(L"[Settings] Load ERROR (std): {0}", util::Utf8ToUtf16(ex.what()));
+        BackupUnreadableSettingsFile(path);
     } catch (...) {
         DebugTrace(L"[Settings] Load ERROR: Unknown exception");
+        BackupUnreadableSettingsFile(path);
     }
 }
 
@@ -229,9 +258,11 @@ void Settings::Save(HINSTANCE hInst) {
         THROW_IF_WIN32_BOOL_FALSE(
             WriteFile(hFile.get(), utf8.data(), static_cast<DWORD>(utf8.size()), &written, nullptr));
         THROW_HR_IF(E_FAIL, written != utf8.size());
+        THROW_IF_WIN32_BOOL_FALSE(FlushFileBuffers(hFile.get()));
         hFile.reset();
 
-        THROW_IF_WIN32_BOOL_FALSE(MoveFileExW(tmp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING));
+        THROW_IF_WIN32_BOOL_FALSE(
+            MoveFileExW(tmp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH));
         cleanupTmp.release(); // rename succeeded — nothing to clean up
     } catch (winrt::hresult_error const& ex) {
         DebugTrace(L"[Settings] Save ERROR (hresult): {0}", ex.message());

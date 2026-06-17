@@ -45,7 +45,7 @@ public:
     void ShowDeviceDisconnected(winrt::hstring const& id, winrt::hstring const& deviceName);
     void ShowAutoReconnect(winrt::hstring const& id, winrt::hstring const& deviceName);
     void ShowAutoReconnectFailed(winrt::hstring const& id, winrt::hstring const& deviceName);
-    void ShowUpdateAvailable(std::wstring const& latestVersion);
+    [[nodiscard]] bool ShowUpdateAvailable(std::wstring const& latestVersion);
 
     void
     OnNotificationInvoked(winrt::Microsoft::Windows::AppNotifications::AppNotificationActivatedEventArgs const& args);
@@ -72,7 +72,7 @@ private:
                                           std::vector<winrt::hstring> tagsToRemove,
                                           uint64_t generation,
                                           winrt::Windows::Foundation::DateTime expiration);
-    void ShowStatusToast(std::wstring const& xml, winrt::Windows::Foundation::DateTime const& expiration);
+    bool ShowStatusToast(std::wstring const& xml, winrt::Windows::Foundation::DateTime const& expiration);
 
     /*------------------------------------------------------------------------------------------------------------*/
     /*//////// Member Variables //////////////////////////////////////////////////////////////////////////////////*/

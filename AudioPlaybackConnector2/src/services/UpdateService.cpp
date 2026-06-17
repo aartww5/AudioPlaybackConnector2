@@ -100,12 +100,87 @@ bool IsTrustedReleasePageUrl(std::wstring_view value) {
     }
 }
 
+bool IsTrustedAppInstallerUri(std::wstring_view value) {
+    try {
+        winrt::Windows::Foundation::Uri uri{winrt::hstring(value)};
+        return uri.SchemeName() == L"https" && _wcsicmp(uri.Host().c_str(), L"n0ahtm.github.io") == 0 &&
+               uri.Path().starts_with(L"/AudioPlaybackConnector2/");
+    } catch (winrt::hresult_error const& ex) {
+        util::DebugTraceException(L"[UpdateService] App Installer URL validation failed", ex);
+        return false;
+    } catch (std::exception const& ex) {
+        util::DebugTraceException(L"[UpdateService] App Installer URL validation failed", ex);
+        return false;
+    }
+}
+
+template <typename AsyncOperation>
+winrt::Windows::System::Threading::ThreadPoolTimer CreateOperationTimeout(AsyncOperation operation,
+                                                                          std::shared_ptr<std::atomic<bool>> timedOut) {
+    return winrt::Windows::System::Threading::ThreadPoolTimer::CreateTimer(
+        [operation = std::move(operation), timedOut](auto) mutable {
+            timedOut->store(true);
+            try {
+                operation.Cancel();
+            } catch (...) {
+            }
+        },
+        c_updateCheckTimeout);
+}
+
+void CancelOperationTimeout(winrt::Windows::System::Threading::ThreadPoolTimer const& timer) noexcept {
+    if (!timer) return;
+    try {
+        timer.Cancel();
+    } catch (...) {
+    }
+}
+
+void ValidateAppInstallerXml(winrt::hstring const& xml) {
+    winrt::Windows::Data::Xml::Dom::XmlDocument document;
+    document.LoadXml(xml);
+
+    auto root = document.DocumentElement();
+    if (!root || root.NodeName() != L"AppInstaller") {
+        throw winrt::hresult_error(E_FAIL, winrt::hstring(L"App Installer feed root is invalid"));
+    }
+
+    auto feedUri = std::wstring(root.GetAttribute(L"Uri"));
+    if (!feedUri.empty() && !IsTrustedAppInstallerUri(feedUri)) {
+        throw winrt::hresult_error(E_FAIL, winrt::hstring(L"App Installer feed URI is not trusted"));
+    }
+
+    auto packageNodes = root.GetElementsByTagName(L"MainPackage");
+    if (packageNodes.Length() == 0) {
+        packageNodes = root.GetElementsByTagName(L"MainBundle");
+    }
+    if (packageNodes.Length() == 0) {
+        throw winrt::hresult_error(E_FAIL, winrt::hstring(L"App Installer feed has no main package"));
+    }
+
+    auto packageElement = packageNodes.Item(0).as<winrt::Windows::Data::Xml::Dom::XmlElement>();
+    auto packageId = winrt::Windows::ApplicationModel::Package::Current().Id();
+    if (packageElement.GetAttribute(L"Name") != packageId.Name() ||
+        packageElement.GetAttribute(L"Publisher") != packageId.Publisher()) {
+        throw winrt::hresult_error(E_FAIL, winrt::hstring(L"App Installer package identity is invalid"));
+    }
+
+    auto packageUri = std::wstring(packageElement.GetAttribute(L"Uri"));
+    if (packageUri.empty() || !IsTrustedAppInstallerUri(packageUri)) {
+        throw winrt::hresult_error(E_FAIL, winrt::hstring(L"App Installer package URI is not trusted"));
+    }
+}
+
 winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::Storage::StorageFile> DownloadAppInstallerFileAsync() {
     winrt::Windows::Web::Http::HttpClient client;
     client.DefaultRequestHeaders().UserAgent().TryParseAdd(L"AudioPlaybackConnector2");
     client.DefaultRequestHeaders().Accept().TryParseAdd(L"application/appinstaller, application/xml, text/xml, */*");
 
-    auto response = co_await client.GetAsync(winrt::Windows::Foundation::Uri(winrt::hstring(c_appInstallerUrl)));
+    auto requestTimedOut = std::make_shared<std::atomic<bool>>(false);
+    auto request = client.GetAsync(winrt::Windows::Foundation::Uri(winrt::hstring(c_appInstallerUrl)));
+    auto requestTimer = CreateOperationTimeout(request, requestTimedOut);
+    auto response = co_await request;
+    CancelOperationTimeout(requestTimer);
     if (!response.IsSuccessStatusCode()) {
         auto message =
             std::format(L"App Installer feed returned HTTP {}", static_cast<uint32_t>(response.StatusCode()));
@@ -118,15 +193,19 @@ winrt::Windows::Foundation::IAsyncOperation<winrt::Windows::Storage::StorageFile
         throw winrt::hresult_error(E_FAIL, winrt::hstring(L"App Installer feed was too large"));
     }
 
-    auto buffer = co_await content.ReadAsBufferAsync();
-    if (buffer.Length() > c_maxAppInstallerBytes) {
+    auto read = content.ReadAsStringAsync();
+    auto readTimer = CreateOperationTimeout(read, requestTimedOut);
+    auto xml = co_await read;
+    CancelOperationTimeout(readTimer);
+    if (xml.size() > c_maxAppInstallerBytes) {
         throw winrt::hresult_error(E_FAIL, winrt::hstring(L"App Installer feed was too large"));
     }
+    ValidateAppInstallerXml(xml);
 
     auto file = co_await winrt::Windows::Storage::ApplicationData::Current().TemporaryFolder().CreateFileAsync(
         winrt::hstring(c_cachedAppInstallerFileName),
         winrt::Windows::Storage::CreationCollisionOption::ReplaceExisting);
-    co_await winrt::Windows::Storage::FileIO::WriteBufferAsync(file, buffer);
+    co_await winrt::Windows::Storage::FileIO::WriteTextAsync(file, xml);
     co_return file;
 }
 } // namespace
@@ -178,28 +257,11 @@ UpdateCheckTask UpdateService::CheckForUpdatesAsync() {
         client.DefaultRequestHeaders().Accept().TryParseAdd(L"application/vnd.github+json");
 
         auto request = client.GetAsync(winrt::Windows::Foundation::Uri(winrt::hstring(c_latestReleaseApiUrl)));
-        auto timeoutTimer = winrt::Windows::System::Threading::ThreadPoolTimer::CreateTimer(
-            [request, requestTimedOut](auto) mutable {
-                requestTimedOut->store(true);
-                try {
-                    request.Cancel();
-                } catch (...) {
-                }
-            },
-            c_updateCheckTimeout);
-        auto timeoutGuard = wil::scope_exit([&]() noexcept {
-            try {
-                timeoutTimer.Cancel();
-            } catch (...) {
-            }
-        });
-
+        auto timeoutTimer = CreateOperationTimeout(request, requestTimedOut);
+        auto timeoutGuard = wil::scope_exit([&]() noexcept { CancelOperationTimeout(timeoutTimer); });
         auto response = co_await request;
         timeoutGuard.release();
-        try {
-            timeoutTimer.Cancel();
-        } catch (...) {
-        }
+        CancelOperationTimeout(timeoutTimer);
 
         if (!response.IsSuccessStatusCode()) {
             result.ErrorMessage = std::format(L"GitHub returned HTTP {}", static_cast<uint32_t>(response.StatusCode()));
@@ -212,7 +274,12 @@ UpdateCheckTask UpdateService::CheckForUpdatesAsync() {
             result.ErrorMessage = L"GitHub release response was too large";
             co_return result;
         }
-        auto body = co_await content.ReadAsStringAsync();
+        auto bodyRead = content.ReadAsStringAsync();
+        auto bodyTimeoutTimer = CreateOperationTimeout(bodyRead, requestTimedOut);
+        auto bodyTimeoutGuard = wil::scope_exit([&]() noexcept { CancelOperationTimeout(bodyTimeoutTimer); });
+        auto body = co_await bodyRead;
+        bodyTimeoutGuard.release();
+        CancelOperationTimeout(bodyTimeoutTimer);
         if (body.size() > c_maxReleaseJsonCharacters) {
             result.ErrorMessage = L"GitHub release response was too large";
             co_return result;
@@ -302,16 +369,7 @@ winrt::fire_and_forget UpdateService::LaunchAppInstallerAsync() {
         util::DebugTraceUnknownException(L"[UpdateService] Failed to download or launch App Installer file");
     }
 
-    try {
-        co_await winrt::Windows::System::Launcher::LaunchUriAsync(
-            winrt::Windows::Foundation::Uri(winrt::hstring(c_appInstallerUrl)));
-    } catch (winrt::hresult_error const& ex) {
-        util::DebugTraceException(L"[UpdateService] Failed to launch appinstaller URI", ex);
-    } catch (std::exception const& ex) {
-        util::DebugTraceException(L"[UpdateService] Failed to launch appinstaller URI", ex);
-    } catch (...) {
-        util::DebugTraceUnknownException(L"[UpdateService] Failed to launch appinstaller URI");
-    }
+    LaunchReleasePageAsync(std::wstring(c_latestReleasePageUrl));
 }
 
 winrt::fire_and_forget UpdateService::LaunchReleasePageAsync(std::wstring releaseUrl) {

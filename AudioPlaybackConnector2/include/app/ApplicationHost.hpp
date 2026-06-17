@@ -48,7 +48,7 @@ private:
     void TeardownDeviceEvents();
     void TryAutoReconnect();
     winrt::fire_and_forget CheckForUpdatesOnStartupAsync();
-    void SaveLastConnectedDevices();
+    void SaveLastConnectedDevices(bool saveImmediately = false);
     void ScheduleDeferredSettingsSave();
     void HandlePowerSuspend();
     void HandlePowerResume();

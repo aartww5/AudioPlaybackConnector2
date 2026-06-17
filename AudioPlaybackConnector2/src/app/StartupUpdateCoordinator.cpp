@@ -26,36 +26,40 @@ winrt::Windows::Foundation::IAsyncAction StartupUpdateCoordinator::CheckForUpdat
     const auto now = UnixNowSeconds();
     bool shouldCheck = false;
     {
-        auto locked = settings.LockExclusiveData();
+        auto locked = settings.LockSharedData();
         shouldCheck = locked->LastUpdateCheckUnixSeconds <= 0 ||
                       now - locked->LastUpdateCheckUnixSeconds >= c_startupUpdateCheckInterval.count();
-        if (shouldCheck) {
-            locked->LastUpdateCheckUnixSeconds = now;
-        }
     }
 
     if (!shouldCheck) co_return;
     if (exiting.load()) co_return;
-    settings.Save(GetModuleHandleW(nullptr));
 
     winrt::apartment_context ui;
     auto result = co_await UpdateService::CheckForUpdatesAsync();
     co_await ui;
 
     if (exiting.load() || !notificationService) co_return;
-    if (result.Status != UpdateCheckStatus::UpdateAvailable || result.LatestVersion.empty()) co_return;
+    if (result.Status == UpdateCheckStatus::Failed) co_return;
 
+    bool notificationQueued = false;
     bool shouldNotify = false;
     {
-        auto locked = settings.LockExclusiveData();
-        if (locked->LastNotifiedUpdateVersion != result.LatestVersion) {
-            locked->LastNotifiedUpdateVersion = result.LatestVersion;
-            shouldNotify = true;
-        }
+        auto locked = settings.LockSharedData();
+        shouldNotify = result.Status == UpdateCheckStatus::UpdateAvailable && !result.LatestVersion.empty() &&
+                       locked->LastNotifiedUpdateVersion != result.LatestVersion;
     }
 
-    if (!shouldNotify) co_return;
-    if (exiting.load()) co_return;
+    if (shouldNotify) {
+        if (exiting.load()) co_return;
+        notificationQueued = notificationService->ShowUpdateAvailable(result.LatestVersion);
+    }
+
+    {
+        auto locked = settings.LockExclusiveData();
+        locked->LastUpdateCheckUnixSeconds = now;
+        if (notificationQueued) {
+            locked->LastNotifiedUpdateVersion = result.LatestVersion;
+        }
+    }
     settings.Save(GetModuleHandleW(nullptr));
-    notificationService->ShowUpdateAvailable(result.LatestVersion);
 }

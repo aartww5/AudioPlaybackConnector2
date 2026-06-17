@@ -328,8 +328,15 @@ winrt::fire_and_forget NotificationService::ShowToastAsync(std::wstring xml,
     }
 }
 
-void NotificationService::ShowStatusToast(std::wstring const& xml,
+bool NotificationService::ShowStatusToast(std::wstring const& xml,
                                           winrt::Windows::Foundation::DateTime const& expiration) {
+    {
+        auto guard = m_lock.lock_shared();
+        if (m_isTearingDown || !m_notificationManager || !m_notificationsRegistered) {
+            return false;
+        }
+    }
+
     auto reservation = ReserveStatusNotificationTag();
     ShowToastAsync(std::wstring(xml),
                    kStatusNotificationGroup,
@@ -337,6 +344,7 @@ void NotificationService::ShowStatusToast(std::wstring const& xml,
                    std::move(reservation.TagsToRemove),
                    reservation.Generation,
                    expiration);
+    return true;
 }
 
 /*------------------------------------------------------------------------------------------------------------*/
@@ -409,8 +417,8 @@ void NotificationService::ShowAutoReconnectFailed(winrt::hstring const& id, winr
     ShowStatusToast(xml, ExpirationFromNow(std::chrono::hours(1)));
 }
 
-void NotificationService::ShowUpdateAvailable(std::wstring const& latestVersion) {
-    if (!ShouldShowNotifications()) return;
+bool NotificationService::ShowUpdateAvailable(std::wstring const& latestVersion) {
+    if (!ShouldShowNotifications()) return false;
     auto title = NotificationText("Notification_UpdateAvailable_Title", latestVersion);
     auto body = NotificationText("Notification_UpdateAvailable_Body");
     auto xml = BuildToastXml(title,
@@ -421,7 +429,7 @@ void NotificationService::ShowUpdateAvailable(std::wstring const& latestVersion)
                              L"ms-appx:///Images/ToastInfo.png",
                              L"<audio silent=\"true\"/>");
 
-    ShowStatusToast(xml, ExpirationFromNow(std::chrono::hours(6)));
+    return ShowStatusToast(xml, ExpirationFromNow(std::chrono::hours(6)));
 }
 
 /*------------------------------------------------------------------------------------------------------------*/
