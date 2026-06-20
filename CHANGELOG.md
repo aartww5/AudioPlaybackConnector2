@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-06-20
+
+### Added
+- Added `apc2ctl.exe` command line control for listing devices, status checks, connect/disconnect/reconnect actions, last-device toggle, and macro-friendly ID/name/MAC targeting (`#7`).
+
+### Fixed
+- Fixed the tray icon staying in a non-connected color while a playback connection is already open (`#10`).
+
 ## [0.6.0] - 2026-06-17
 
 ### Added

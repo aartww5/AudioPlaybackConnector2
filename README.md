@@ -58,6 +58,19 @@ For commands and certificate-store options, see [Installation](docs/INSTALLATION
 - **Open tray menu:** Right-click the tray icon.
 - **Quick toggle:** Double-click the tray icon to connect or disconnect the last connected device.
 - **Settings:** Open from the tray menu to configure language, startup behavior, reconnect behavior, notifications, and update checks.
+- **Command line:** Use `apc2ctl.exe` from PowerShell, MacroPads, Stream Deck actions, or scripts:
+
+```powershell
+apc2ctl status
+apc2ctl list
+apc2ctl connect --name "Device Name"
+apc2ctl connect --mac "A1:B2:C3:D4:E5:F6"
+apc2ctl disconnect --id "<Windows device id>"
+apc2ctl toggle --last
+apc2ctl reconnect-all
+```
+
+Add `--json` to `status`, `list`, or device actions for machine-readable output.
 
 ## Installation Notes
 
