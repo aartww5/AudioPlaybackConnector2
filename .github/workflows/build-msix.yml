@@ -79,5 +79,5 @@ jobs:
         name: AudioPlaybackConnector2-MSIX-x64
         path: |
           ${{ steps.msix.outputs.PATH }}
-          certs/AudioPlaybackConnector2.cer
+          certs/APC2.cer
         if-no-files-found: error
