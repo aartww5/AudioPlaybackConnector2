@@ -818,14 +818,27 @@ void DeviceManager::Disconnect(winrt::hstring deviceId, DisconnectReason reason,
 
 void DeviceManager::ReportConnectionFailure(winrt::hstring const& deviceId,
                                             winrt::hstring const& message,
-                                            bool cleanupConnection) {
+                                            bool cleanupConnection,
+                                            bool scheduleReconnect) {
     {
         auto guard = m_lock.lock_shared();
         if (m_shutdownForProcessExit) return;
     }
+
+    // Capture autoReconnect BEFORE Disconnect(Cleanup) removes the session entry.
+    bool autoReconnect = false;
+    if (scheduleReconnect) {
+        auto guard = m_lock.lock_shared();
+        auto info = m_sessions.FindConnection(deviceId);
+        autoReconnect = info && info->AutoReconnect;
+    }
+
     ConnectionError(deviceId, message);
     if (cleanupConnection) {
         Disconnect(deviceId, DisconnectReason::Cleanup);
+    }
+    if (scheduleReconnect && autoReconnect) {
+        ScheduleReconnect(deviceId);
     }
     DeviceStatusChanged(deviceId,
                         message,
@@ -992,27 +1005,27 @@ DeviceManager::ConnectInternalAsync(winrt::Windows::Devices::Enumeration::Device
                 break;
             }
             case winrt::Windows::Media::Audio::AudioPlaybackConnectionOpenResultStatus::RequestTimedOut:
-                ReportConnectionFailure(deviceId, winrt::hstring(_("RequestTimedOut")), true);
+                ReportConnectionFailure(deviceId, winrt::hstring(_("RequestTimedOut")), true, true);
                 break;
             case winrt::Windows::Media::Audio::AudioPlaybackConnectionOpenResultStatus::DeniedBySystem:
-                ReportConnectionFailure(deviceId, winrt::hstring(_("DeniedBySystem")), true);
+                ReportConnectionFailure(deviceId, winrt::hstring(_("DeniedBySystem")), true, true);
                 break;
             case winrt::Windows::Media::Audio::AudioPlaybackConnectionOpenResultStatus::UnknownFailure: {
                 winrt::hresult_error err(result.ExtendedError());
-                ReportConnectionFailure(deviceId, err.message(), true);
+                ReportConnectionFailure(deviceId, err.message(), true, true);
                 break;
             }
         }
     } catch (winrt::hresult_error const& ex) {
         if (!IsConnectAttemptCurrent(deviceId, attemptId)) co_return;
-        ReportConnectionFailure(deviceId, ex.message(), true);
+        ReportConnectionFailure(deviceId, ex.message(), true, true);
     } catch (std::exception const& ex) {
         if (!IsConnectAttemptCurrent(deviceId, attemptId)) co_return;
-        ReportConnectionFailure(deviceId, winrt::hstring(util::Utf8ToUtf16(ex.what())), true);
+        ReportConnectionFailure(deviceId, winrt::hstring(util::Utf8ToUtf16(ex.what())), true, true);
     } catch (...) {
         util::DebugTraceUnknownException(L"[DeviceManager] ConnectInternalAsync ERROR");
         if (!IsConnectAttemptCurrent(deviceId, attemptId)) co_return;
-        ReportConnectionFailure(deviceId, winrt::hstring(_("UnknownError")), true);
+        ReportConnectionFailure(deviceId, winrt::hstring(_("UnknownError")), true, true);
     }
 }
 

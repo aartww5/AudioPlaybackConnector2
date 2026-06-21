@@ -87,7 +87,7 @@ private:
     ConnectInternalAsync(winrt::Windows::Devices::Enumeration::DeviceInformation device);
     enum class DisconnectReason { UserInitiated, UserInitiatedCascade, Unexpected, Cleanup };
 
-    void ReportConnectionFailure(winrt::hstring const& deviceId, winrt::hstring const& message, bool cleanupConnection);
+    void ReportConnectionFailure(winrt::hstring const& deviceId, winrt::hstring const& message, bool cleanupConnection, bool scheduleReconnect = false);
     void Disconnect(winrt::hstring deviceId, DisconnectReason reason);
     void Disconnect(winrt::hstring deviceId, DisconnectReason reason, bool suppressCascade);
     bool IsConnectAttemptCurrent(winrt::hstring const& deviceId, std::size_t attemptId) const;
