@@ -25,11 +25,21 @@ jobs:
         if ([string]::IsNullOrWhiteSpace($b64)) {
           Write-Host "::warning::SIGNING_CERTIFICATE_PFX not set — building unsigned MSIX"
           "CERT_PATH=" >> $env:GITHUB_OUTPUT
+          "CERT_THUMBPRINT=" >> $env:GITHUB_OUTPUT
         } else {
           $certPath = "$env:TEMP\AudioPlaybackConnector2.pfx"
           $bytes = [Convert]::FromBase64String($b64)
           [IO.File]::WriteAllBytes($certPath, $bytes)
+          # Extract the SHA-1 thumbprint of the cert in the PFX so we can pass
+          # it to msbuild. The .wapproj hardcodes the original author's
+          # thumbprint, which won't match our self-signed cert — passing
+          # /p:PackageCertificateThumbprint overrides it.
+          $pwd = ConvertTo-SecureString -String "${{ secrets.SIGNING_CERTIFICATE_PASSWORD }}" -AsPlainText -Force
+          $imported = Import-PfxCertificate -FilePath $certPath -CertStoreLocation Cert:\CurrentUser\My -Password $pwd
+          $thumb = $imported.Thumbprint
           "CERT_PATH=$certPath" >> $env:GITHUB_OUTPUT
+          "CERT_THUMBPRINT=$thumb" >> $env:GITHUB_OUTPUT
+          Write-Host "Cert thumbprint: $thumb"
         }
 
     - name: Restore NuGet packages
@@ -39,6 +49,7 @@ jobs:
       shell: pwsh
       run: |
         $certPath = "${{ steps.cert.outputs.CERT_PATH }}"
+        $thumb = "${{ steps.cert.outputs.CERT_THUMBPRINT }}"
         if ([string]::IsNullOrWhiteSpace($certPath)) {
           msbuild AudioPlaybackConnector2.slnx `
             /p:Configuration=Release `
@@ -54,6 +65,7 @@ jobs:
             /p:AppxPackageSigningEnabled=true `
             /p:PackageCertificateKeyFile=$certPath `
             /p:PackageCertificatePassword=${{ secrets.SIGNING_CERTIFICATE_PASSWORD }} `
+            /p:PackageCertificateThumbprint=$thumb `
             /p:UapAppxPackageBuildMode=SideloadOnly `
             /p:AppxBundle=Never `
             /t:Rebuild
