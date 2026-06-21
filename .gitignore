@@ -160,3 +160,10 @@ dist/
 # Auto-generated static analysis reports
 static_analysis_log.txt
 
+# -----------------------------------------------------------------------------
+# 10. Local code-signing certificates (never commit private keys)
+# -----------------------------------------------------------------------------
+
+*.pfx
+*.pfx.b64
+

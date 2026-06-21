@@ -99,6 +99,10 @@ private:
                                   winrt::Windows::Media::Audio::AudioPlaybackConnection sender,
                                   winrt::Windows::Foundation::IInspectable);
     void ScheduleReconnect(winrt::hstring deviceId);
+    void ArmPassiveListener(winrt::hstring deviceId);
+    void OnPassiveConnectionStateChanged(winrt::hstring deviceId,
+                                         winrt::Windows::Media::Audio::AudioPlaybackConnection sender,
+                                         winrt::Windows::Foundation::IInspectable args);
     void StartConnectionHeartbeat();
     void StopConnectionHeartbeat();
     void LogConnectionSnapshot(winrt::hstring const& reason) const;
@@ -117,6 +121,7 @@ private:
     std::unordered_map<std::wstring, std::size_t> m_connectAttemptIds;
     std::unordered_map<std::wstring, std::chrono::steady_clock::time_point> m_userActionCascadeIds;
     std::unordered_set<std::wstring> m_cascadeRestoreIds;
+    std::unordered_set<std::wstring> m_passiveListenIds;
     bool m_powerTransitionSuspended = false;
     bool m_shutdownForProcessExit = false;
 
