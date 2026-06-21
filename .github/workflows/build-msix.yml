@@ -1,0 +1,83 @@
+name: Build MSIX
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-msix:
+    runs-on: windows-2022
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Add MSBuild to PATH
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Decode signing certificate (if available)
+      id: cert
+      shell: pwsh
+      run: |
+        $b64 = "${{ secrets.SIGNING_CERTIFICATE_PFX }}"
+        if ([string]::IsNullOrWhiteSpace($b64)) {
+          Write-Host "::warning::SIGNING_CERTIFICATE_PFX not set — building unsigned MSIX"
+          "CERT_PATH=" >> $env:GITHUB_OUTPUT
+        } else {
+          $certPath = "$env:TEMP\AudioPlaybackConnector2.pfx"
+          $bytes = [Convert]::FromBase64String($b64)
+          [IO.File]::WriteAllBytes($certPath, $bytes)
+          "CERT_PATH=$certPath" >> $env:GITHUB_OUTPUT
+        }
+
+    - name: Restore NuGet packages
+      run: msbuild AudioPlaybackConnector2.slnx -t:restore -p:RestorePackagesConfig=true
+
+    - name: Build MSIX (Release, x64)
+      shell: pwsh
+      run: |
+        $certPath = "${{ steps.cert.outputs.CERT_PATH }}"
+        if ([string]::IsNullOrWhiteSpace($certPath)) {
+          msbuild AudioPlaybackConnector2.slnx `
+            /p:Configuration=Release `
+            /p:Platform=x64 `
+            /p:AppxPackageSigningEnabled=false `
+            /p:UapAppxPackageBuildMode=SideloadOnly `
+            /p:AppxBundle=Never `
+            /t:Rebuild
+        } else {
+          msbuild AudioPlaybackConnector2.slnx `
+            /p:Configuration=Release `
+            /p:Platform=x64 `
+            /p:AppxPackageSigningEnabled=true `
+            /p:PackageCertificateKeyFile=$certPath `
+            /p:PackageCertificatePassword=${{ secrets.SIGNING_CERTIFICATE_PASSWORD }} `
+            /p:UapAppxPackageBuildMode=SideloadOnly `
+            /p:AppxBundle=Never `
+            /t:Rebuild
+        }
+
+    - name: Locate MSIX artifact
+      id: msix
+      shell: pwsh
+      run: |
+        $msix = Get-ChildItem -Recurse -Filter *.msix |
+          Where-Object { $_.FullName -notmatch "[\\/]Dependencies[\\/]" } |
+          Sort-Object LastWriteTimeUtc -Descending |
+          Select-Object -First 1
+        if (-not $msix) {
+          throw "MSIX not found in build output"
+        }
+        "PATH=$($msix.FullName)" >> $env:GITHUB_OUTPUT
+        "NAME=$($msix.Name)" >> $env:GITHUB_OUTPUT
+
+    - name: Upload MSIX artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: AudioPlaybackConnector2-MSIX-x64
+        path: |
+          ${{ steps.msix.outputs.PATH }}
+          certs/AudioPlaybackConnector2.cer
+        if-no-files-found: error
