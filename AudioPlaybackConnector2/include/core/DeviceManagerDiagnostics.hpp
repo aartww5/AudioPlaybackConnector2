@@ -13,7 +13,6 @@ struct DeviceManagerDiagnosticSnapshot {
     bool Disconnecting = false;
     bool Reconnecting = false;
     bool CancelledReconnect = false;
-    bool PassiveListening = false;
     std::size_t ReconnectAttempts = 0;
     std::size_t ConnectAttemptId = 0;
 };

@@ -3,7 +3,7 @@
 #include <core/ReconnectController.hpp>
 
 namespace {
-constexpr std::size_t c_maxReconnectAttempts = 10;
+constexpr std::size_t c_maxReconnectAttempts = SIZE_MAX;
 constexpr int c_initialReconnectDelaySeconds = 5;
 constexpr int c_maxReconnectDelaySeconds = 60;
 constexpr std::chrono::milliseconds c_reconnectCloseCooldown{1500};

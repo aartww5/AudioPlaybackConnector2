@@ -41,7 +41,7 @@ void LogDeviceManagerDiagnosticSnapshot(winrt::hstring const& reason,
 
         DebugTrace(
             L"[DeviceManager] Snapshot device id={0} name={1} isOpen={2} state={3} autoReconnect={4} disconnecting={5} "
-            L"reconnecting={6} cancelledReconnect={7} passiveListening={8} reconnectAttempts={9} connectAttemptId={10}",
+            L"reconnecting={6} cancelledReconnect={7} reconnectAttempts={8} connectAttemptId={9}",
             std::wstring(snapshot.Id),
             std::wstring(snapshot.Name),
             snapshot.IsOpen,
@@ -50,7 +50,6 @@ void LogDeviceManagerDiagnosticSnapshot(winrt::hstring const& reason,
             snapshot.Disconnecting,
             snapshot.Reconnecting,
             snapshot.CancelledReconnect,
-            snapshot.PassiveListening,
             snapshot.ReconnectAttempts,
             snapshot.ConnectAttemptId);
     }

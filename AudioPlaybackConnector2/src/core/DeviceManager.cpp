@@ -154,7 +154,6 @@ void DeviceManager::ShutdownForProcessExit() noexcept {
             m_connectAttemptIds.clear();
             m_userActionCascadeIds.clear();
             m_cascadeRestoreIds.clear();
-            m_passiveListenIds.clear();
             m_autoReconnectPred = nullptr;
         }
         if (m_discoveryService) {
@@ -214,7 +213,6 @@ void DeviceManager::SuspendForPowerTransition() noexcept {
             m_reconnectController.ClearTracking();
             m_userActionCascadeIds.clear();
             m_cascadeRestoreIds.clear();
-            m_passiveListenIds.clear();
         }
 
         if (!connections.empty()) {
@@ -247,7 +245,6 @@ void DeviceManager::ResumeAfterPowerTransition() {
         m_reconnectController.ClearTracking();
         m_userActionCascadeIds.clear();
         m_cascadeRestoreIds.clear();
-        m_passiveListenIds.clear();
     }
     DebugTrace(L"[DeviceManager] Power transition resume completed");
     StartDeviceWatcher();
@@ -258,7 +255,6 @@ void DeviceManager::CancelPendingReconnects() {
     m_reconnectController.CancelPendingReconnects();
     m_userActionCascadeIds.clear();
     m_cascadeRestoreIds.clear();
-    m_passiveListenIds.clear();
 }
 
 void DeviceManager::SetAutoReconnectPredicate(AutoReconnectPredicate pred) {
@@ -608,12 +604,12 @@ bool DeviceManager::HasConnections() const {
 
 bool DeviceManager::HasBusyOperations() const {
     auto guard = m_lock.lock_shared();
-    return m_sessions.HasBusyOperations();
+    return m_sessions.HasBusyOperations() || m_reconnectController.HasPendingTimers();
 }
 
 bool DeviceManager::IsDeviceBusy(winrt::hstring const& deviceId) const {
     auto guard = m_lock.lock_shared();
-    return m_sessions.IsDeviceBusy(deviceId);
+    return m_sessions.IsDeviceBusy(deviceId) || m_reconnectController.HasPendingTimer(deviceId);
 }
 
 void DeviceManager::StartConnectionHeartbeat() {
@@ -673,7 +669,6 @@ void DeviceManager::LogConnectionSnapshot(winrt::hstring const& reason) const {
             snapshot.Disconnecting = m_sessions.IsDisconnecting(snapshot.Id);
             snapshot.Reconnecting = m_sessions.IsReconnecting(snapshot.Id);
             snapshot.CancelledReconnect = m_reconnectController.IsCancelled(snapshot.Id);
-            snapshot.PassiveListening = m_passiveListenIds.count(id) > 0;
             snapshot.ReconnectAttempts = m_reconnectController.Attempts(snapshot.Id);
             if (auto iter = m_connectAttemptIds.find(id); iter != m_connectAttemptIds.end()) {
                 snapshot.ConnectAttemptId = iter->second;
@@ -734,7 +729,6 @@ void DeviceManager::Disconnect(winrt::hstring deviceId, DisconnectReason reason,
         if (reason == DisconnectReason::UserInitiated && !suppressCascade) {
             TrackUserActionCascadeLocked(deviceId);
             m_reconnectController.MarkUserCancelled(deviceId);
-            m_passiveListenIds.erase(std::wstring(deviceId));
         }
     }
 
@@ -783,7 +777,7 @@ void DeviceManager::Disconnect(winrt::hstring deviceId, DisconnectReason reason,
                                 winrt::Windows::Devices::Enumeration::DevicePickerDisplayStatusOptions::None,
                                 DeviceStatusKind::None);
             if (reason == DisconnectReason::Unexpected && autoReconnect) {
-                ArmPassiveListener(deviceId);
+                ScheduleReconnect(deviceId);
             }
         }
     }
@@ -1125,7 +1119,7 @@ void DeviceManager::RestoreCascadeConnectionDetached(winrt::hstring deviceId) {
                     shouldStop = self->m_shutdownForProcessExit || self->m_powerTransitionSuspended ||
                                  self->m_sessions.HasConnection(id);
                     shouldWait =
-                        self->m_sessions.HasBusyOperationsExcept(id);
+                        self->m_sessions.HasBusyOperationsExcept(id) || self->m_reconnectController.HasPendingTimers();
                 }
                 if (shouldStop) co_return;
                 if (!shouldWait) break;
@@ -1307,216 +1301,6 @@ void DeviceManager::ScheduleReconnect(winrt::hstring deviceId) {
         auto guard = m_lock.lock_exclusive();
         m_reconnectController.HandleTimerCreateFailed(deviceId, timerGeneration);
         util::DebugTraceUnknownException(L"[DeviceManager] ScheduleReconnect ERROR: failed to create reconnect timer");
-    }
-}
-
-void DeviceManager::ArmPassiveListener(winrt::hstring deviceId) {
-    auto weak = weak_from_this();
-    const std::wstring deviceIdKey = std::wstring(deviceId);
-    [](std::weak_ptr<DeviceManager> weak, winrt::hstring id, std::wstring idKey) -> winrt::fire_and_forget {
-        auto self = weak.lock();
-        if (!self) co_return;
-
-        winrt::Windows::Media::Audio::AudioPlaybackConnection connection{nullptr};
-        winrt::event_token stateChangedToken{};
-
-        try {
-            // Guard: shutdown or power-suspend
-            {
-                auto guard = self->m_lock.lock_shared();
-                if (self->m_shutdownForProcessExit || self->m_powerTransitionSuspended) co_return;
-            }
-
-            // Already connected or already listening
-            if (self->m_sessions.HasConnection(id)) co_return;
-
-            // Insert into passive listen set
-            {
-                auto guard = self->m_lock.lock_exclusive();
-                self->m_passiveListenIds.insert(idKey);
-            }
-
-            co_await winrt::resume_background();
-
-            // Re-check shutdown/power-suspend under exclusive lock
-            {
-                auto guard = self->m_lock.lock_exclusive();
-                if (self->m_shutdownForProcessExit || self->m_powerTransitionSuspended) {
-                    self->m_passiveListenIds.erase(idKey);
-                    co_return;
-                }
-            }
-
-            connection = AudioConnectionService::TryCreateFromId(id);
-            if (!connection) {
-                {
-                    auto guard = self->m_lock.lock_exclusive();
-                    self->m_passiveListenIds.erase(idKey);
-                }
-                DebugTrace(L"[DeviceManager] ArmPassiveListener TryCreateFromId returned null: {0}", std::wstring(id));
-                co_return;
-            }
-
-            // Register StateChanged handler
-            auto weakInner = weak;
-            auto stateChangedDeviceId = id;
-            stateChangedToken = AudioConnectionService::RegisterStateChanged(
-                connection, [weakInner, stateChangedDeviceId](auto sender, auto args) {
-                    if (auto self = weakInner.lock()) {
-                        self->OnPassiveConnectionStateChanged(stateChangedDeviceId, sender, args);
-                    }
-                });
-
-            // StartAsync only - no OpenAsync. This is the entire point of pure listening.
-            co_await AudioConnectionService::StartAsync(connection);
-
-            // Under exclusive lock: re-check guards, build info, and insert atomically
-            {
-                auto guard = self->m_lock.lock_exclusive();
-                if (self->m_shutdownForProcessExit || self->m_powerTransitionSuspended ||
-                    self->m_sessions.HasConnection(id)) {
-                    if (stateChangedToken.value != 0) {
-                        AudioConnectionService::RevokeStateChanged(connection, stateChangedToken);
-                    }
-                    AudioConnectionService::Close(connection);
-                    self->m_passiveListenIds.erase(idKey);
-                    co_return;
-                }
-
-                DeviceConnectionInfo info;
-                info.Id = idKey;
-                info.Name = idKey;
-                info.Connection = connection;
-                info.IsOpen = false;
-                info.StateChangedToken = stateChangedToken;
-                auto pred = self->m_autoReconnectPred;
-                info.AutoReconnect = pred ? pred(id) : false;
-                self->m_sessions.InsertOrUpdateConnection(id, std::move(info));
-            }
-
-            DebugTrace(L"[DeviceManager] Passive listener armed: {0}", std::wstring(id));
-            // Do NOT fire AutoReconnectTriggered, DeviceConnected, or DeviceStatusChanged.
-            // Passive listening is silent.
-
-        } catch (winrt::hresult_error const& ex) {
-            if (stateChangedToken.value != 0 && connection) {
-                AudioConnectionService::RevokeStateChanged(connection, stateChangedToken);
-            }
-            if (connection) {
-                AudioConnectionService::Close(connection);
-            }
-            {
-                auto guard = self->m_lock.lock_exclusive();
-                self->m_passiveListenIds.erase(idKey);
-            }
-            util::DebugTraceException(L"[DeviceManager] ArmPassiveListener ERROR", ex);
-        } catch (std::exception const& ex) {
-            if (stateChangedToken.value != 0 && connection) {
-                AudioConnectionService::RevokeStateChanged(connection, stateChangedToken);
-            }
-            if (connection) {
-                AudioConnectionService::Close(connection);
-            }
-            {
-                auto guard = self->m_lock.lock_exclusive();
-                self->m_passiveListenIds.erase(idKey);
-            }
-            util::DebugTraceException(L"[DeviceManager] ArmPassiveListener ERROR", ex);
-        } catch (...) {
-            if (stateChangedToken.value != 0 && connection) {
-                AudioConnectionService::RevokeStateChanged(connection, stateChangedToken);
-            }
-            if (connection) {
-                AudioConnectionService::Close(connection);
-            }
-            {
-                auto guard = self->m_lock.lock_exclusive();
-                self->m_passiveListenIds.erase(idKey);
-            }
-            util::DebugTraceUnknownException(L"[DeviceManager] ArmPassiveListener ERROR");
-        }
-    }(std::move(weak), std::move(deviceId), deviceIdKey);
-}
-
-void DeviceManager::OnPassiveConnectionStateChanged(winrt::hstring deviceId,
-                                                     winrt::Windows::Media::Audio::AudioPlaybackConnection sender,
-                                                     winrt::Windows::Foundation::IInspectable) {
-    const std::wstring deviceIdKey = std::wstring(deviceId);
-    {
-        auto guard = m_lock.lock_shared();
-        if (m_shutdownForProcessExit) return;
-    }
-
-    try {
-        auto state = sender.State();
-        DebugTrace(L"[DeviceManager] PassiveConnectionStateChanged: id={0} state={1}",
-                   std::wstring(deviceId),
-                   DeviceConnectionStateName(state));
-
-        if (state == winrt::Windows::Media::Audio::AudioPlaybackConnectionState::Opened) {
-            bool proceed = false;
-            {
-                auto guard = m_lock.lock_exclusive();
-                auto info = m_sessions.FindConnection(deviceId);
-                if (!info || info->Connection != sender) return;
-                if (m_shutdownForProcessExit || m_powerTransitionSuspended) return;
-
-                m_sessions.UpdateConnectionIsOpen(deviceId, true);
-                m_sessions.UnmarkReconnecting(deviceId);
-                m_reconnectController.ClearAttempts(deviceId);
-                m_passiveListenIds.erase(deviceIdKey);
-                m_userActionCascadeIds.erase(deviceIdKey);
-                proceed = true;
-            }
-            if (proceed) {
-                DeviceConnected(deviceId);
-                DeviceStatusChanged(
-                    deviceId,
-                    winrt::hstring(_("Connected")),
-                    winrt::Windows::Devices::Enumeration::DevicePickerDisplayStatusOptions::ShowDisconnectButton,
-                    DeviceStatusKind::Connected);
-                StartConnectionHeartbeat();
-                LogConnectionSnapshot(L"passive-opened");
-            }
-        } else if (state == winrt::Windows::Media::Audio::AudioPlaybackConnectionState::Closed) {
-            bool wasOpen = false;
-            bool isStale = false;
-            {
-                auto guard = m_lock.lock_exclusive();
-                auto info = m_sessions.FindConnection(deviceId);
-                if (!info || info->Connection != sender) {
-                    isStale = true;
-                } else {
-                    wasOpen = info->IsOpen;
-                    if (wasOpen) {
-                        // Revoke the token under lock to avoid re-entrancy
-                        if (info->StateChangedToken.value != 0) {
-                            AudioConnectionService::RevokeStateChanged(sender, info->StateChangedToken);
-                        }
-                    }
-                }
-            }
-            if (isStale) return;
-
-            if (!wasOpen) {
-                // Initial Closed after StartAsync - expected
-                DebugTrace(L"[DeviceManager] PassiveConnectionStateChanged initial Closed (expected): {0}",
-                           std::wstring(deviceId));
-                return;
-            }
-
-            // Phone disconnected after being connected via passive listening.
-            // Treat as unexpected disconnect; re-arming happens inside Disconnect.
-            Disconnect(deviceId, DisconnectReason::Unexpected);
-        }
-    } catch (winrt::hresult_error const& ex) {
-        DebugTrace(L"[DeviceManager] PassiveConnectionStateChanged callback failed: 0x{0:X} {1}",
-                   static_cast<uint32_t>(ex.code()),
-                   ex.message());
-    } catch (std::exception const& ex) {
-        util::DebugTraceException(L"[DeviceManager] PassiveConnectionStateChanged callback failed", ex);
-    } catch (...) {
-        util::DebugTraceUnknownException(L"[DeviceManager] PassiveConnectionStateChanged callback failed");
     }
 }
 
